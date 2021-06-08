@@ -11,10 +11,19 @@
 #define S2 25  // Hubungkan pin D9 dengan pin RPWM BTS7960
 #define SIG A0 // Hubungkan pin D9 dengan pin RPWM BTS7960
 
+#define CW 0
+#define CCW 1
+#define STOP 2
+
+uint8_t state = 2;
+
 // Sensores
 //volatile uint16_t sensores[5];
 
 void readSensor();
+void motor_CW();
+void motor_CCW();
+void changeState();
 
 void setup()
 {
@@ -35,19 +44,21 @@ void loop()
 {
   // put your main code here, to run repeatedly:
   readSensor();
-  /*
-  motor_CW(); //Muter CW 1 detik
-  delay(1000);
+  changeState(); // Change state
+  switch (state)
+  {
+  case CW:
+    motor_CW();
+    break;
 
-  motor_stop(); //STOP 1 detik
-  delay(1000);
+  case CCW:
+    motor_CCW();
+    break;
 
-  motor_CCW(); //Muter CCW 1 detik
-  delay(1000);
-
-  motor_stop(); //STOP 1 detik
-  delay(1000);
-  */
+  case STOP:
+    motor_stop();
+    break;
+  }
 }
 
 void readSensor()
@@ -65,6 +76,16 @@ void readSensor()
     Serial.print(" -- ");
     Serial.println(analogRead(A4));
     previousMillis1 += 100;
+  }
+}
+
+void changeState()
+{
+  static unsigned long previousMillis2 = 0;
+  if ((millis() - previousMillis2) > 1000)
+  {
+    state += 1;
+    previousMillis2 += 1000;
   }
 }
 
@@ -99,4 +120,20 @@ void motor_stop()
   digitalWrite(RPWM, LOW);
   analogWrite(PWM, 0); //Value "0" harus tetap 0, karena motornya diperintahkan untuk STOP
   Serial.println("STOP");
+}
+
+/*
+  @brief Leer mux 1  
+  @param canal
+*/
+void readMux()
+{
+  for (size_t i = 0; i < 16; i++)
+  {
+    digitalWrite(S0, i & 0x01);
+    digitalWrite(S1, i & 0x02);
+    digitalWrite(S2, i & 0x04);
+    digitalWrite(S3, i & 0x08);
+  }
+  analogRead(SIG); // leer canal
 }
