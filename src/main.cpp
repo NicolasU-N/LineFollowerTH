@@ -15,15 +15,20 @@
 #define CCW 1
 #define STOP 2
 
+#define TRIG 30
+#define ECHO 31  // Ultrasonic sensor 1
+
 uint8_t state = 2;
 
 // Sensores
 //volatile uint16_t sensores[5];
 
-void readSensor();
+void readLineSensor();
+void motor_stop();
 void motor_CW();
 void motor_CCW();
 void changeState();
+void readUltrasonicSensor();
 
 void setup()
 {
@@ -38,13 +43,17 @@ void setup()
   pinMode(S1, OUTPUT);
   pinMode(S2, OUTPUT);
   pinMode(S3, OUTPUT);
+
+  pinMode(TRIG, OUTPUT); // ultrasonic sensor 
+  pinMode(ECHO, INPUT_PULLUP);
 }
 
 void loop()
 {
   // put your main code here, to run repeatedly:
-  readSensor();
+  readLineSensor();
   changeState(); // Change state
+  readUltrasonicSensor();
   switch (state)
   {
   case CW:
@@ -61,7 +70,7 @@ void loop()
   }
 }
 
-void readSensor()
+void readLineSensor()
 {
   static unsigned long previousMillis1 = 0;
   if ((millis() - previousMillis1) > 100)
@@ -76,6 +85,25 @@ void readSensor()
     Serial.print(" -- ");
     Serial.println(analogRead(A4));
     previousMillis1 += 100;
+  }
+}
+
+void readUltrasonicSensor()
+{
+  static unsigned long previousMillis1 = 0;
+  if ((millis() - previousMillis1) > 1000)
+  {
+  digitalWrite(TRIG, LOW); // Set the trigger pin to low for 2uS
+  delayMicroseconds(2);
+
+  digitalWrite(TRIG, HIGH); // Send a 10uS high to trigger ranging
+  delayMicroseconds(20);
+
+  digitalWrite(TRIG, LOW);                     // Send pin low again
+  float distance = pulseIn(ECHO, HIGH, 26000); // Read in times pulse
+
+  distance = distance / 58; //13.3511 instead of 58 because the speed of a soundwave in water is far bigger than in air
+  previousMillis1 += 1000;
   }
 }
 
