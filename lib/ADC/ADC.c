@@ -1,6 +1,7 @@
 /*
  * ADC.c
- *
+ * library for atmega 2560 adc configuration
+ * 
  * Created: 08/04/2021 06:43:35 p.m.
  * Author: Nicolas
  */
@@ -29,14 +30,15 @@ uint16_t ADCGetData(uint8_t canal)
 
 	// Encendemos en ADC
 	ADCSRA |= (1 << ADEN);
-	_delay_us(10);	// Esperamos a encender
+	_delay_us(10); // Esperamos a encender
 
 	// Mandamos el muestreo
 	ADCSRA |= (1 << ADSC);
 
 	// Esperamos a que muestree, leyendo el flag
-	while (!(ADCSRA & (1 << ADIF)));
-	ADCSRA |= (1 << ADIF);	// Reiniciamos el flag
+	while (!(ADCSRA & (1 << ADIF)))
+		;
+	ADCSRA |= (1 << ADIF); // Reiniciamos el flag
 
 	// Apagamos el ADC
 	ADCSRA &= ~(1 << ADEN);
