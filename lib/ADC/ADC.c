@@ -9,30 +9,23 @@
 
 void ADCInit()
 {
-	// Output adjust = right //
-	ADMUX &= ~(1 << ADLAR);
-
-	// Voltage Reference = AVCC //
+	// Select Vref=AVcc
 	ADMUX |= (1 << REFS0);
-	ADMUX &= ~(1 << REFS1);
-
-	// Frequency divisor = 128 -> 16000/128 = 125 KHz
-	ADCSRA |= (1 << ADPS0);
-	ADCSRA |= (1 << ADPS1);
-	ADCSRA |= (1 << ADPS2);
+	//set prescaller to 128 and enable ADC // Frequency divisor = 128 -> 16000/128 = 125 KHz
+	ADCSRA |= (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);
 }
 
 uint16_t ADCGetData(uint8_t canal)
 {
-	// Seleccion del canal de lADC //
+	// Seleccion del canal del ADC
 	ADMUX &= ~0x0F;
 	ADMUX |= canal;
 
 	// Encendemos en ADC
 	ADCSRA |= (1 << ADEN);
-	_delay_us(10); // Esperamos a encender
+	_delay_us(2); // Esperamos a encender
 
-	// Mandamos el muestreo
+	// single conversion mode
 	ADCSRA |= (1 << ADSC);
 
 	// Esperamos a que muestree, leyendo el flag
