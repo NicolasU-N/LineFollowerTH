@@ -10,9 +10,8 @@
 void PWM_init()
 {
 	//Operation Mode = Fast PWM
-	TCCR2A |= (1 << WGM21);	//1
-	TCCR2A |= (1 << WGM20);	//1
-
+	TCCR2A |= (1 << WGM21); //1
+	TCCR2A |= (1 << WGM20); //1
 }
 
 void PWM_on()
@@ -34,8 +33,8 @@ void PWM_off()
 
 void setDutyPWMB(int duty)
 {
-	TCCR2A &= ~(1 << COM2A0);	//0
-	TCCR2A |= (1 << COM2A1);	//1
+	TCCR2A &= ~(1 << COM2A0); //0
+	TCCR2A |= (1 << COM2A1);  //1
 
 	OCR2A = duty;
 }
@@ -43,7 +42,7 @@ void setDutyPWMB(int duty)
 void setDutyPWMA(int duty)
 {
 	TCCR2A &= ~(1 << COM2B0); //0
-	TCCR2A |= (1 << COM2B1);	//1
+	TCCR2A |= (1 << COM2B1);  //1
 
 	OCR2B = duty;
 }

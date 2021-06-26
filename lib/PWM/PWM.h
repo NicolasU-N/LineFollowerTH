@@ -11,7 +11,8 @@
 #define PWM_H_
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 	void PWM_init();
 	void PWM_on();
@@ -19,6 +20,7 @@ extern "C" {
 
 	void setDutyPWMA(int duty);
 	void setDutyPWMB(int duty);
+	void setDutyPWMC(int duty);
 #ifdef __cplusplus
 }
 #endif

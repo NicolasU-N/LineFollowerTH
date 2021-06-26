@@ -93,10 +93,10 @@ Physical Pin      Arduino Pin    Port Pin     Function
 
 #define BUZZER PL3 // Output
 
-#define BTNBACKF PL2  // Input
-#define BTNBACKB PL1  // Input
-#define BTNFRONTF PL0 // Input
-#define BTNFRONTB PB3 // Input
+#define BTNBACKF PE5  // Input
+#define BTNBACKB PE4  // Input
+#define BTNFRONTF PD3 // Input
+#define BTNFRONTB PD2 // Input
 
 #define TRIG1BACKIZQ PORTC7
 #define ECHO1BACKIZQ 31 // Ultrasonic sensor 1
@@ -197,12 +197,13 @@ void setup()
   DDRC |= (1 << DDC7) | (1 << DDC3) | (1 << DDC5) | (1 << DDC1);
   DDRH |= (1 << DDH4) | (1 << DDH3);
   DDRD |= (1 << DDD7);
-  DDRL |= (1 << DDL1) | (1 << DDL2) | (1 << DDL3) | (1 << DDL4) | (1 << DDL5); //Pin 3 del puerto D ,//Pin 4 del puerto D, Pin 5 del puerto D, Pin 6 del puerto D
+  DDRL |= (1 << DDL3) | (1 << DDL4) | (1 << DDL5) | (1 << DDL6) | (1 << DDL7); //Pin 3 del puerto D ,//Pin 4 del puerto D, Pin 5 del puerto D, Pin 6 del puerto D
   DDRE |= (1 << DDE3);                                                         //| (1 << DDE4) | (1 << DDE5)
   DDRG |= (1 << DDG5) | (1 << DDG1);
 
   //CONFIGURACION PINES DE ENTRADA
-  DDRL &= ~((1 << DDL1) | (1 << DDL2) | (1 << DDL0) | (1 << DDL0));
+  DDRL &= ~((1 << DDL1) | (1 << DDL2) | (1 << DDL0)); //
+  DDRE &= ~((1 << DDE5) | (1 << DDE4));               // PINES BOTONES BACK
 
   //PINES PULL UP ULTRASONICOS
   DDRC &= ~((1 << DDC6) | (1 << DDC4) | (1 << DDC2) | (1 << DDC0));
