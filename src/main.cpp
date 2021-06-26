@@ -56,6 +56,13 @@ Physical Pin      Arduino Pin    Port Pin     Function
 #include <avr/interrupt.h>
 #include <util/delay.h>
 #include <ADC.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+#define COLUMS 20
+#define ROWS 4
+
+#define LCD_SPACE_SYMBOL 0x20 //space symbol from the LCD ROM, see p.9 of GDM2004D datasheet
 
 #define S0D PORTA0 //22  // OUTPUT
 #define S1D PORTA1 //23  // OUTPUT
@@ -74,15 +81,15 @@ Physical Pin      Arduino Pin    Port Pin     Function
 #define IRDISB 3 //PF3 //Input Analog
 
 // Pines direccion puente h
-#define RPWMIZQ PORTL7 //42 // Hubungkan pin D9 dengan pin RPWM BTS7960
-#define LPWMIZQ PORTL6 //43 // Hubungkan pin D10 dengan pin LPWM BTS7960
-#define PWMIZQ0 PORTE4 //2  // Hubungkan pin D11 dengan pin R_EN and L_EN BTS7960. Harus menggunakan pin PWM dari MicroController
-#define PWMIZQ1 PORTE5 //3  // Hubungkan pin D11 dengan pin R_EN and L_EN BTS7960. Harus menggunakan pin PWM dari MicroController
+#define RPWMIZQ 42     //PORTL7 // // Hubungkan pin D9 dengan pin RPWM BTS7960
+#define LPWMIZQ 43     //PORTL6 // Hubungkan pin D10 dengan pin LPWM BTS7960
+#define PWMIZQ0 PORTE4 //6  // Hubungkan pin D11 dengan pin R_EN and L_EN BTS7960. Harus menggunakan pin PWM dari MicroController
+#define PWMIZQ1 PORTE5 //7  // Hubungkan pin D11 dengan pin R_EN and L_EN BTS7960. Harus menggunakan pin PWM dari MicroController
 
-#define RPWMDER PL5 // Hubungkan pin D9 dengan pin RPWM BTS7960
-#define LPWMDER PL4 // Hubungkan pin D10 dengan pin LPWM BTS7960
-#define PWMDER0 PG5 // Hubungkan pin D11 dengan pin R_EN and L_EN BTS7960. Harus menggunakan pin PWM dari MicroController
-#define PWMDER1 PE3 // Hubungkan pin D11 dengan pin R_EN and L_EN BTS7960. Harus menggunakan pin PWM dari MicroController
+#define RPWMDER 44  //PL5  // Hubungkan pin D9 dengan pin RPWM BTS7960
+#define LPWMDER 45  //PL4 // Hubungkan pin D10 dengan pin LPWM BTS7960
+#define PWMDER0 PG5 // 4 // Hubungkan pin D11 dengan pin R_EN and L_EN BTS7960. Harus menggunakan pin PWM dari MicroController
+#define PWMDER1 PE3 // 5 // Hubungkan pin D11 dengan pin R_EN and L_EN BTS7960. Harus menggunakan pin PWM dari MicroController
 
 #define BUZZER PL3 // Output
 
@@ -131,6 +138,9 @@ volatile float distUltra[6];
 
 volatile uint16_t disIrSenValue[2];
 
+// ------------------- LCD INIT
+LiquidCrystal_I2C lcd(PCF8574_ADDR_A21_A11_A01, 4, 5, 6, 16, 11, 12, 13, 14, POSITIVE);
+
 //void readLineSensor();
 void motor_stop();
 void motor_CW();
@@ -145,6 +155,35 @@ void setup()
 {
   cli();
   Serial.begin(115200);
+  Wire.begin();
+
+  /*
+  while (lcd.begin(COLUMS, ROWS) != 1) //colums - 20, rows - 4
+  {
+    Serial.println(F("PCF8574 is not connected or lcd pins declaration is wrong. Only pins numbers: 4,5,6,16,11,12,13,14 are legal."));
+    delay(5000);
+  }
+  lcd.print(F("PCF8574 is OK...")); //(F()) saves string to flash & keeps dynamic memory free
+  delay(2000);
+
+  
+  lcd.clear();
+
+
+
+*/
+
+  /* prints static text */
+  //lcd.setCursor(0, 1); //set 1-st colum & 2-nd row, 1-st colum & row started at zero
+  //lcd.print(F("Hello world!"));
+
+  /*
+  // print dynamic text
+  lcd.setCursor(14, 2);
+  lcd.print(random(10, 1000));
+  lcd.write(LCD_SPACE_SYMBOL);
+  */
+
   // put your setup code here, to run once:
   Serial.println("Start");
 
@@ -156,9 +195,10 @@ void setup()
   //CONFIGURACION PINES DE SALIDA
   DDRA = 0xFF; // OUTPUT ALL pines del puerto A
   DDRC |= (1 << DDC7) | (1 << DDC3) | (1 << DDC5) | (1 << DDC1);
+  DDRH |= (1 << DDH4) | (1 << DDH3);
   DDRD |= (1 << DDD7);
   DDRL |= (1 << DDL1) | (1 << DDL2) | (1 << DDL3) | (1 << DDL4) | (1 << DDL5); //Pin 3 del puerto D ,//Pin 4 del puerto D, Pin 5 del puerto D, Pin 6 del puerto D
-  DDRE |= (1 << DDE3) | (1 << DDE4) | (1 << DDE5);
+  DDRE |= (1 << DDE3);                                                         //| (1 << DDE4) | (1 << DDE5)
   DDRG |= (1 << DDG5) | (1 << DDG1);
 
   //CONFIGURACION PINES DE ENTRADA
@@ -383,15 +423,16 @@ void changeState()
 void motor_CW()
 {
 
-  Serial.print((int)analogRead(A0)); // IZ
-  Serial.print(" --- ");
-  Serial.println((int)analogRead(A1)); // DER
+  //Serial.print((int)analogRead(A0)); // IZ
+  //Serial.print(" --- ");
+  //Serial.println((int)analogRead(A1)); // DER
 
   //Other code here
 
   digitalWrite(LPWMIZQ, LOW);
   digitalWrite(RPWMIZQ, HIGH);
-  /*
+
+  //-----------------------------------------------------------
   if (fadeValue < 255)
   {
     if (fadeValue >= 245)
@@ -402,17 +443,18 @@ void motor_CW()
     {
       fadeValue++;
     }
-    analogWrite(PWMIZQ0, fadeValue);
-    analogWrite(PWMIZQ1, fadeValue);
+    analogWrite(6, fadeValue); //PWMIZQ0
+    analogWrite(7, fadeValue); //PWMIZQ1
     delay(50);
   }
-*/
-  analogWrite(PWMIZQ0, 500); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
-  analogWrite(PWMIZQ1, 500); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
+
+  //-----------------------------------------------------------
+  analogWrite(6, 500); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
+  analogWrite(7, 500); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
 
   digitalWrite(LPWMDER, LOW);
   digitalWrite(RPWMDER, HIGH);
-  /*
+  //-----------------------------------------------------------
   if (fadeValue1 < 255)
   {
     if (fadeValue1 >= 245)
@@ -423,13 +465,14 @@ void motor_CW()
     {
       fadeValue1++;
     }
-    analogWrite(PWMDER0, fadeValue1);
-    analogWrite(PWMDER1, fadeValue1);
+    analogWrite(4, fadeValue1); //PWMDER0
+    analogWrite(5, fadeValue1); //PWMDER1
     delay(50);
   }
-  */
-  analogWrite(PWMDER0, 500); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
-  analogWrite(PWMDER1, 500); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
+
+  //-----------------------------------------------------------
+  analogWrite(4, 500); //PWMDER0    Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
+  analogWrite(5, 500); // PWMDER1    Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
 
   Serial.println("Muter Kanan");
 }
@@ -437,12 +480,12 @@ void motor_CW()
 //Function buat motor muter ke CCW
 void motor_CCW()
 {
-  Serial.print((int)analogRead(A0)); // IZ
-  Serial.print(" --- ");
-  Serial.println((int)analogRead(A1)); // DER
+  //Serial.print((int)analogRead(A0)); // IZ
+  //Serial.print(" --- ");
+  //Serial.println((int)analogRead(A1)); // DER
   digitalWrite(LPWMIZQ, HIGH);
   digitalWrite(RPWMIZQ, LOW);
-  /*
+  // ------------------------------------------------------
   if (fadeValue < 255)
   {
     if (fadeValue >= 245)
@@ -453,20 +496,18 @@ void motor_CCW()
     {
       fadeValue++;
     }
-    analogWrite(PWMDER0, fadeValue);
-    analogWrite(PWMDER1, fadeValue);
+    analogWrite(6, fadeValue); //PWMIZQ0
+    analogWrite(7, fadeValue); //PWMIZQ1
     delay(50);
   }
-  */
-  //analogWrite(PWMDER0, 500); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
-  //analogWrite(PWMDER1, 500); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
 
-  analogWrite(PWMIZQ0, 500); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
-  analogWrite(PWMIZQ1, 500); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
+  //----------------------------------------------------
+  analogWrite(6, 500); //PWMIZQ0 //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
+  analogWrite(7, 500); //PWMIZQ1//Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
 
   digitalWrite(LPWMDER, HIGH);
   digitalWrite(RPWMDER, LOW);
-  /*
+
   if (fadeValue1 < 255)
   {
     if (fadeValue1 >= 245)
@@ -477,12 +518,12 @@ void motor_CCW()
     {
       fadeValue1++;
     }
-    analogWrite(PWMDER0, fadeValue1);
-    analogWrite(PWMDER1, fadeValue1);
+    analogWrite(4, fadeValue1); //PWMDER0
+    analogWrite(5, fadeValue1); //PWMDER1
     delay(50);
-  }*/
-  analogWrite(PWMDER0, 500); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
-  analogWrite(PWMDER1, 500); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
+  }
+  analogWrite(4, 500); //PWMDER0 //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
+  analogWrite(5, 500); //PWMDER1 //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
 
   //analogWrite(PWMDER0, 500); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
   //analogWrite(PWMDER1, 500); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
@@ -494,7 +535,7 @@ void motor_stop()
 {
   digitalWrite(LPWMDER, LOW);
   digitalWrite(RPWMDER, LOW);
-  /*
+
   if (fadeValue > 0)
   {
     if (fadeValue <= 15)
@@ -509,14 +550,14 @@ void motor_stop()
     analogWrite(PWMDER1, fadeValue);
     delay(50);
   }
-  */
-  //analogWrite(PWMDER0, 500); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
-  //analogWrite(PWMDER1, 500); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
+
+  analogWrite(PWMDER0, 0); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
+  analogWrite(PWMDER1, 0); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
   //fadeValue = 0;
 
   digitalWrite(LPWMIZQ, LOW);
   digitalWrite(RPWMIZQ, LOW);
-  /*
+
   if (fadeValue1 > 0)
   {
     if (fadeValue1 <= 15)
@@ -530,7 +571,7 @@ void motor_stop()
     analogWrite(PWMIZQ0, fadeValue1);
     analogWrite(PWMIZQ1, fadeValue1);
     delay(50);
-  }*/
+  }
 
   analogWrite(PWMIZQ0, 0); //Value "0" harus tetap 0, karena motornya diperintahkan untuk STOP
   analogWrite(PWMIZQ1, 0); //Value "0" harus tetap 0, karena motornya diperintahkan untuk STOP
