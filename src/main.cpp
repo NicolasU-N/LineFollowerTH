@@ -68,35 +68,32 @@ Physical Pin      Arduino Pin    Port Pin     Function
 #define S1D PORTA1 //23  // OUTPUT
 #define S3D PORTA2 //24  // OUTPUT
 #define S2D PORTA3 //25  // OUTPUT
-#define SIGD 0     //A0 // INPUT
+#define SIGD 0     //A0 // INPUT CANAL 0
 
-#define S0I PORTA4 //22  // OUTPUT
-#define S1I PORTA5 //23  // OUTPUT
-#define S3I PORTA6 //24  // OUTPUT
-#define S2I PORTA7 //25  // OUTPUT
-#define SIGI 1     //A0 // INPUT
+#define BATTLEVEL 1 //A1 // INPUT CANAL 1
 
 //Pines Sensor distancia infrarojo
-#define IRDISF 2 //PF2 //Input Analog
-#define IRDISB 3 //PF3 //Input Analog
+#define IRDISF 2 //PF2 //Input Analog CANAL 2
+#define IRDISB 3 //PF3 //Input Analog CANAL 3
 
 // Pines direccion puente h
-#define RPWMIZQ 42     //PORTL7 // // Hubungkan pin D9 dengan pin RPWM BTS7960
-#define LPWMIZQ 43     //PORTL6 // Hubungkan pin D10 dengan pin LPWM BTS7960
-#define PWMIZQ0 PORTE4 //6  // Hubungkan pin D11 dengan pin R_EN and L_EN BTS7960. Harus menggunakan pin PWM dari MicroController
-#define PWMIZQ1 PORTE5 //7  // Hubungkan pin D11 dengan pin R_EN and L_EN BTS7960. Harus menggunakan pin PWM dari MicroController
+#define RENIZQ 9  //42 //PORTL7
+#define LENIZQ 10 //43 //PORTL6
+#define PWMIZQ0 6 // PORTE4
+#define PWMIZQ1 7 // PORTE5
 
-#define RPWMDER 44  //PL5  // Hubungkan pin D9 dengan pin RPWM BTS7960
-#define LPWMDER 45  //PL4 // Hubungkan pin D10 dengan pin LPWM BTS7960
-#define PWMDER0 PG5 // 4 // Hubungkan pin D11 dengan pin R_EN and L_EN BTS7960. Harus menggunakan pin PWM dari MicroController
-#define PWMDER1 PE3 // 5 // Hubungkan pin D11 dengan pin R_EN and L_EN BTS7960. Harus menggunakan pin PWM dari MicroController
+#define RENDER 11 //44 //PL5
+#define LENDER 12 //45 //PL4
+#define PWMDER0 4 //  PG5
+#define PWMDER1 5 // PE3
 
 #define BUZZER PL3 // Output
 
-#define BTNBACKF PE5  // Input
-#define BTNBACKB PE4  // Input
-#define BTNFRONTF PD3 // Input
-#define BTNFRONTB PD2 // Input
+#define BTNBACKF 3   // Input
+#define BTNBACKB 2   // Input
+#define BTNFRONTF 18 // Input
+#define BTNFRONTB 19 // Input
+#define BTNLINE 15   // PJ0 Input
 
 #define TRIG1BACKIZQ PORTC7
 #define ECHO1BACKIZQ 31 // Ultrasonic sensor 1
@@ -116,23 +113,33 @@ Physical Pin      Arduino Pin    Port Pin     Function
 #define TRIG6BACKDER PORTG1
 #define ECHO6BACKDER 41 // Ultrasonic sensor 1
 
+/*
 #define CW 0
 #define CCW 1
 #define STOP 2
+*/
+
+//-----DEFINIR ESTADOS
+#define STOP 0
+#define BACKF 1
+#define BACKB 2
+#define FRONTB 3
+#define FRONTF 4
+#define FINISH 5
+#define CHARGE 6
 
 uint8_t state = 1;
+
+boolean chargeFlag = false;
+
 uint8_t fadeValue;
 uint8_t fadeValue1;
-uint8_t fadeValue2;
 
 // Sensores izquierdos
-volatile uint16_t lineSenBackIzq[5];
-volatile uint16_t lineSenLatIzq[5];
-volatile uint16_t lineSenFrontIzq[5];
-
-volatile uint16_t lineSenBackDer[5];
-volatile uint16_t lineSenLatDer[5];
-volatile uint16_t linesenFrontDer[5];
+volatile uint16_t lineSenBack[6];
+uint16_t lineSenLatIzq;
+uint16_t lineSenLatDer;
+volatile uint16_t lineSenFront[6];
 
 volatile float distUltra[6];
 
@@ -151,6 +158,41 @@ void readDisIrSen();
 void readMuxIzq();
 void readMuxDer();
 
+ISR(INT2_vect) //
+{
+  if (chargeFlag) //Si necesita carga entonces
+  {
+    state = CHARGE; // Estado es CHARGE
+  }
+  else
+  {
+    state = FRONTB;
+  }
+}
+
+ISR(INT3_vect)
+{
+  if (chargeFlag) //Si necesita carga entonces
+  {
+    chargeFlag = false; // Estado es STOP restablecemos carga
+    state = STOP;
+  }
+  else
+  {
+    state = FRONTF;
+  }
+}
+
+ISR(INT4_vect)
+{
+  state = BACKB;
+}
+
+ISR(INT5_vect)
+{
+  state = BACKF;
+}
+
 void setup()
 {
   cli();
@@ -168,10 +210,7 @@ void setup()
 
   
   lcd.clear();
-
-
-
-*/
+  */
 
   /* prints static text */
   //lcd.setCursor(0, 1); //set 1-st colum & 2-nd row, 1-st colum & row started at zero
@@ -192,51 +231,39 @@ void setup()
 
   //PORTA = 0x00; // OFF ALL
 
-  //CONFIGURACION PINES DE SALIDA
+  //-----------CONFIGURACION PINES DE SALIDA BTNS LEDS  Y MUX SIGNALS
+
   DDRA = 0xFF; // OUTPUT ALL pines del puerto A
-  DDRC |= (1 << DDC7) | (1 << DDC3) | (1 << DDC5) | (1 << DDC1);
-  DDRH |= (1 << DDH4) | (1 << DDH3);
-  DDRD |= (1 << DDD7);
-  DDRL |= (1 << DDL3) | (1 << DDL4) | (1 << DDL5) | (1 << DDL6) | (1 << DDL7); //Pin 3 del puerto D ,//Pin 4 del puerto D, Pin 5 del puerto D, Pin 6 del puerto D
-  DDRE |= (1 << DDE3);                                                         //| (1 << DDE4) | (1 << DDE5)
-  DDRG |= (1 << DDG5) | (1 << DDG1);
 
-  //CONFIGURACION PINES DE ENTRADA
-  DDRL &= ~((1 << DDL1) | (1 << DDL2) | (1 << DDL0)); //
-  DDRE &= ~((1 << DDE5) | (1 << DDE4));               // PINES BOTONES BACK
+  //----------- CONFIGURACION PINES DE SALIDA PUENTE H Y ULTRASONICOS
+  DDRC |= (1 << DDC1) | (1 << DDC3) | (1 << DDC5) | (1 << DDC7); // TRIG ULTRASONIC SENSOR
+  DDRH |= (1 << DDH4) | (1 << DDH3) | (1 << DDH6);               // PWMIZQ1 PWMIZQ0 RENIZQ
+  DDRB |= (1 << DDB5) | (1 << DDB6);                             // RENDER Y LENDER
+  DDRG |= (1 << DDG5) | (1 << DDG1);                             // PWMDER0 Y TRIG ULTRASONIC SENSOR
+  DDRD |= (1 << DDD7);                                           // TRIG ULTRASONIC SENSOR
+  DDRE |= (1 << DDE3);                                           // PWMDER1
 
-  //PINES PULL UP ULTRASONICOS
+  //----------- CONFIGURACION PINES DE ENTRADA BTNS
+  DDRE &= ~((1 << DDE5) | (1 << DDE4)); // PINES BOTONES BACK
+  DDRD &= ~((1 << DDD2) | (1 << DDD3)); // PINES BOTONES FRONT
+  DDRJ &= ~((1 << DDJ0));               //ENTRADA BTN LINE PCINT9
+
+  //---------------------- CONFIGUACION INTERRUPCIONES -------------------
+  EICRA &= ~((1 << ISC20) | (1 << ISC30));
+  EICRA |= (1 << ISC21) | (1 << ISC31); // FLANCO DE BAJADA INT2(FRONT ATRAS) E INT3 (FRONT ADELANTE)
+
+  EICRB &= ~((1 << ISC40) | (1 << ISC50));
+  EICRB |= ((1 << ISC41) | (1 << ISC51)); // FLANCO DE BAJADA INT4(BACK ATRAS) E INT5(BACK ADELANTE)
+
+  EIMSK |= ((1 << INT2) | (1 << INT3) | (1 << INT4) | (1 << INT5)); // ACTIVAR INTERRUPCION
+
+  //----------- PINES PULL UP ULTRASONICOS
+
   DDRC &= ~((1 << DDC6) | (1 << DDC4) | (1 << DDC2) | (1 << DDC0));
   DDRG &= ~((1 << DDG2) | (1 << DDG0));
 
   PORTC |= (1 << PORTC6) | (1 << PORTC4) | (1 << PORTC2) | (1 << PORTC0);
   PORTG |= (1 << PORTG2) | (1 << PORTG0);
-
-  /*
-  pinMode(RPWMIZQ, OUTPUT);
-  pinMode(LPWMIZQ, OUTPUT);
-  pinMode(PWMIZQ0, OUTPUT);
-  pinMode(PWMIZQ1, OUTPUT);
-
-  pinMode(RPWMDER, OUTPUT);
-  pinMode(LPWMDER, OUTPUT);
-  pinMode(PWMDER0, OUTPUT);
-  pinMode(PWMDER1, OUTPUT);
-
-  pinMode(S0I, OUTPUT);
-  pinMode(S1I, OUTPUT);
-  pinMode(S2I, OUTPUT);
-  pinMode(S3I, OUTPUT);
-
-  pinMode(S0D, OUTPUT);
-  pinMode(S1D, OUTPUT);
-  pinMode(S2D, OUTPUT);
-  pinMode(S3D, OUTPUT);
-  */
-
-  // ultrasonic sensor
-  //pinMode(TRIG, OUTPUT);
-  //pinMode(ECHO, INPUT_PULLUP);
 
   sei();
 }
@@ -251,8 +278,8 @@ void loop()
   readDisIrSen();
 
   readMuxIzq();
-  readMuxDer();
 
+  /*
   switch (state)
   {
   case CW:
@@ -267,6 +294,7 @@ void loop()
     motor_CCW();
     break;
   }
+  */
 }
 
 /*
@@ -615,34 +643,6 @@ void readMuxIzq()
     }
   }
   Serial.println("");
-}
-
-/*
-  @brief Leer mux 2  
-  @param canal
-*/
-void readMuxDer()
-{
-  for (size_t i = 0; i < 16; i++)
-  {
-    PORTA = (i & 0x01 << S0D) | (i & 0x02 << S1D) | (i & 0x04 << S2D) | (i & 0x08 << S3D);
-    /*digitalWrite(S0, i & 0x01);
-    digitalWrite(S1, i & 0x02);
-    digitalWrite(S2, i & 0x04);
-    digitalWrite(S3, i & 0x08);*/
-    if (i < 5)
-    {
-      lineSenBackDer[i] = ADCGetData(SIGD); // leer canal
-    }
-    else if (i > 5 && i < 10)
-    {
-      lineSenLatDer[i - 5] = ADCGetData(SIGD); // leer canal
-    }
-    else if (i > 10 && i < 15)
-    {
-      linesenFrontDer[i - 10] = ADCGetData(SIGD);
-    }
-  }
 }
 
 /*

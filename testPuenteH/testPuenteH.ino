@@ -1,12 +1,12 @@
 // Pines direccion puente h
-#define RENIZQ 9 //42 //PORTL7
-#define LENIZQ 10 //43 //PORTL6
-#define PWMIZQ0 6 // PORTE4
-#define PWMIZQ1 7 // PORTE5
+#define RENIZQ 9  // PORTH6
+#define LENIZQ 10 // PORTB4
+#define PWMIZQ0 6 // PORTH3
+#define PWMIZQ1 7 // PORTH4
 
-#define RENDER 11 //44 //PL5
-#define LENDER 12 //45 //PL4
-#define PWMDER0 4 //  PG5
+#define RENDER 11 // PB5
+#define LENDER 12 // PB6
+#define PWMDER0 4 // PG5
 #define PWMDER1 5 // PE3
 
 // PINES BOTONES
@@ -113,7 +113,7 @@ void motor_CW()
   }
   //else
   //{
-    
+
   //}
 
   pwmizq = funcPwm(fadeValue);
@@ -249,7 +249,7 @@ int funcPwm(int &t)
 void blink() {
   cli();
   delay(600);
-  
+
   Serial.println("--------------------------------------------------------INTE");
   if (state == 0) {
     state = 1;
