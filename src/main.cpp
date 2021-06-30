@@ -48,7 +48,6 @@ Physical Pin      Arduino Pin    Port Pin     Function
 48                D48            PL1          BTNBACKB //Atras
 49                D49            PL0          BTNFRONTF //Adelante
 50                D50            PB3          BTNFRONTB //Atras
-
 */
 
 #include <Arduino.h>
@@ -73,90 +72,85 @@ Physical Pin      Arduino Pin    Port Pin     Function
 #define BATTLEVEL 1 //A1 // INPUT CANAL 1
 
 //Pines Sensor distancia infrarojo
-#define IRDISF 2 //PF2 //Input Analog CANAL 2
-#define IRDISB 3 //PF3 //Input Analog CANAL 3
+#define IRDISF 2 //Input Analog CANAL 2
+#define IRDISB 3 //Input Analog CANAL 3
 
 // Pines direccion puente h
-#define RENIZQ 9  //42 //PORTL7
-#define LENIZQ 10 //43 //PORTL6
-#define PWMIZQ0 6 // PORTE4
-#define PWMIZQ1 7 // PORTE5
+#define RENIZQ 9       // 9 PORTH6
+#define LENIZQ 10      // 10 PORTB4
+#define PWMIZQ0 PORTH3 // 6 PORTH3
+#define PWMIZQ1 PORTH4 // 7 PORTH4
 
-#define RENDER 11 //44 //PL5
-#define LENDER 12 //45 //PL4
-#define PWMDER0 4 //  PG5
-#define PWMDER1 5 // PE3
+#define RENDER 11      // 11 PORTB5
+#define LENDER 12      // 12 PORTB6
+#define PWMDER0 PORTG5 // 4 PORTG5
+#define PWMDER1 PORTE3 // 5 PORTE3
 
-#define BUZZER PL3 // Output
+#define BUZZER PORTL7 //42 Output
 
-#define BTNBACKF 3   // Input
-#define BTNBACKB 2   // Input
-#define BTNFRONTF 18 // Input
-#define BTNFRONTB 19 // Input
+#define BTNFRONTF 18 // PORTD3 Input
+#define BTNFRONTB 19 // PORTD2 Input
 #define BTNLINE 15   // PJ0 Input
 
-#define TRIG1BACKIZQ PORTC7
-#define ECHO1BACKIZQ 31 // Ultrasonic sensor 1
+#define TRIG1BACKDER PORTC7 //30
+#define ECHO1BACKDER 31     //PC6 Ultrasonic sensor 1
 
-#define TRIG2LATIZQ PORTC5
-#define ECHO2LATIZQECHO 33 // Ultrasonic sensor 1
+#define TRIG2BACKIZQ PORTC5
+#define ECHO2BACKIZQ 33 //PC4 Ultrasonic sensor 1
 
-#define TRIG3FRONTLATIZQ PORTC3
-#define ECHO3FRONTLATIZQ 35 // Ultrasonic sensor 1
+#define TRIG3LATIZQ PORTC3
+#define ECHO3LATIZQECHO 35 //PC2 Ultrasonic sensor 1
 
-#define TRIG4FRONTLATDER PORTC1
-#define ECHO4FRONTLATDER 37 // Ultrasonic sensor 1
+#define TRIG4FRONTLATIZQ PORTC1
+#define ECHO4FRONTLATIZQ 37 //PC0 Ultrasonic sensor 1
 
-#define TRIG5LATDER PORTD7
-#define ECHO5LATDER 39 // Ultrasonic sensor 1
+#define TRIG5FRONTLATDER PORTD7
+#define ECHO5FRONTLATDER 39 //PG2 Ultrasonic sensor 1
 
-#define TRIG6BACKDER PORTG1
-#define ECHO6BACKDER 41 // Ultrasonic sensor 1
+#define TRIG6LATDER PORTG1
+#define ECHO6LATDER 41 //PG0 Ultrasonic sensor 1
 
-/*
-#define CW 0
-#define CCW 1
-#define STOP 2
-*/
-
-//-----DEFINIR ESTADOS
+// ------------------- ESTADOS
 #define STOP 0
 #define BACKF 1
 #define BACKB 2
-#define FRONTB 3
-#define FRONTF 4
-#define FINISH 5
-#define CHARGE 6
+#define FINISH 3
+#define CHARGE 4
 
-uint8_t state = 1;
+uint8_t state = 0;
 
 boolean chargeFlag = false;
 
-uint8_t fadeValue;
-uint8_t fadeValue1;
+// ------------------- Arranque y parada
+uint16_t fadeValue;
+uint8_t velPwm;
 
-// Sensores izquierdos
+// ------------------- Sensores de linea
 volatile uint16_t lineSenBack[6];
-uint16_t lineSenLatIzq;
-uint16_t lineSenLatDer;
+volatile uint16_t lineSenLatIzq[2];
+volatile uint16_t lineSenLatDer[2];
 volatile uint16_t lineSenFront[6];
 
+// ------------------- Sensores ultrasonicos
 volatile float distUltra[6];
 
+// ------------------- Sensores IR distancia
 volatile uint16_t disIrSenValue[2];
 
 // ------------------- LCD INIT
 LiquidCrystal_I2C lcd(PCF8574_ADDR_A21_A11_A01, 4, 5, 6, 16, 11, 12, 13, 14, POSITIVE);
 
-//void readLineSensor();
+// ------------------- INICIALIZAR FUNCIONES
+uint8_t funcPwm(uint16_t &t);
+
 void motor_stop();
 void motor_CW();
 void motor_CCW();
 void changeState();
-void readUltraSen();
+void readUltrasonicSen();
 void readDisIrSen();
 void readMuxIzq();
-void readMuxDer();
+void initLCD();
 
 ISR(INT2_vect) //
 {
@@ -166,7 +160,7 @@ ISR(INT2_vect) //
   }
   else
   {
-    state = FRONTB;
+    state = BACKB;
   }
 }
 
@@ -179,18 +173,8 @@ ISR(INT3_vect)
   }
   else
   {
-    state = FRONTF;
+    state = BACKF;
   }
-}
-
-ISR(INT4_vect)
-{
-  state = BACKB;
-}
-
-ISR(INT5_vect)
-{
-  state = BACKF;
 }
 
 void setup()
@@ -200,40 +184,18 @@ void setup()
   Wire.begin();
 
   /*
-  while (lcd.begin(COLUMS, ROWS) != 1) //colums - 20, rows - 4
-  {
-    Serial.println(F("PCF8574 is not connected or lcd pins declaration is wrong. Only pins numbers: 4,5,6,16,11,12,13,14 are legal."));
-    delay(5000);
-  }
-  lcd.print(F("PCF8574 is OK...")); //(F()) saves string to flash & keeps dynamic memory free
-  delay(2000);
-
-  
-  lcd.clear();
+  initLCD();
   */
 
-  /* prints static text */
-  //lcd.setCursor(0, 1); //set 1-st colum & 2-nd row, 1-st colum & row started at zero
-  //lcd.print(F("Hello world!"));
-
-  /*
-  // print dynamic text
-  lcd.setCursor(14, 2);
-  lcd.print(random(10, 1000));
-  lcd.write(LCD_SPACE_SYMBOL);
-  */
-
-  // put your setup code here, to run once:
   Serial.println("Start");
 
   //CONFIGURAR ADC (SENSORES IR)
   ADCInit();
 
-  //PORTA = 0x00; // OFF ALL
-
   //-----------CONFIGURACION PINES DE SALIDA BTNS LEDS  Y MUX SIGNALS
+  DDRA |= (1 << DDA0) | (1 << DDA1) | (1 << DDA2) | (1 << DDA3); // OUTPUT MUX SIGNALS
 
-  DDRA = 0xFF; // OUTPUT ALL pines del puerto A
+  DDRL |= (1 << DDL6) | (1 << DDL7) | (1 << DDL5) | (1 << DDL3); // LUZ , BUZZER ALARMA, COLOR LED EMERGENCY , COMUN LUZ LED BTNS
 
   //----------- CONFIGURACION PINES DE SALIDA PUENTE H Y ULTRASONICOS
   DDRC |= (1 << DDC1) | (1 << DDC3) | (1 << DDC5) | (1 << DDC7); // TRIG ULTRASONIC SENSOR
@@ -244,18 +206,18 @@ void setup()
   DDRE |= (1 << DDE3);                                           // PWMDER1
 
   //----------- CONFIGURACION PINES DE ENTRADA BTNS
-  DDRE &= ~((1 << DDE5) | (1 << DDE4)); // PINES BOTONES BACK
-  DDRD &= ~((1 << DDD2) | (1 << DDD3)); // PINES BOTONES FRONT
+  //DDRE &= ~((1 << DDE5) | (1 << DDE4)); // PINES BOTONES BACK
+  DDRD &= ~((1 << DDD2) | (1 << DDD3)); // PINES BOTONERAS CONECTADAS EN PARALELO
   DDRJ &= ~((1 << DDJ0));               //ENTRADA BTN LINE PCINT9
 
   //---------------------- CONFIGUACION INTERRUPCIONES -------------------
   EICRA &= ~((1 << ISC20) | (1 << ISC30));
   EICRA |= (1 << ISC21) | (1 << ISC31); // FLANCO DE BAJADA INT2(FRONT ATRAS) E INT3 (FRONT ADELANTE)
 
-  EICRB &= ~((1 << ISC40) | (1 << ISC50));
-  EICRB |= ((1 << ISC41) | (1 << ISC51)); // FLANCO DE BAJADA INT4(BACK ATRAS) E INT5(BACK ADELANTE)
+  //EICRB &= ~((1 << ISC40) | (1 << ISC50));
+  //EICRB |= ((1 << ISC41) | (1 << ISC51)); // FLANCO DE BAJADA INT4(BACK ATRAS) E INT5(BACK ADELANTE)
 
-  EIMSK |= ((1 << INT2) | (1 << INT3) | (1 << INT4) | (1 << INT5)); // ACTIVAR INTERRUPCION
+  EIMSK |= ((1 << INT2) | (1 << INT3)); // ACTIVAR INTERRUPCION | (1 << INT4) | (1 << INT5)
 
   //----------- PINES PULL UP ULTRASONICOS
 
@@ -274,8 +236,7 @@ void loop()
   //readLineSensor();
   changeState(); // Change state
 
-  readUltraSen();
-  readDisIrSen();
+  readUltrasonicSen();
 
   readMuxIzq();
 
@@ -297,121 +258,266 @@ void loop()
   */
 }
 
-/*
-void readLineSensor()
+void initLCD()
 {
-  static unsigned long previousMillis1 = 0;
-  if ((millis() - previousMillis1) > 100)
+  while (lcd.begin(COLUMS, ROWS) != 1) //colums - 20, rows - 4
   {
-
-    Serial.print(ADCGetData(0));
-    Serial.print(" -- ");
-    Serial.print(ADCGetData(1));
-    Serial.print(" -- ");
-    Serial.print(ADCGetData(2));
-    Serial.print(" -- ");
-    Serial.print(ADCGetData(3));
-    Serial.print(" -- ");
-    Serial.println(ADCGetData(5));
-    previousMillis1 += 100;
+    Serial.println(F("PCF8574 is not connected or lcd pins declaration is wrong. Only pins numbers: 4,5,6,16,11,12,13,14 are legal."));
+    delay(5000);
   }
-}
-*/
+  lcd.print(F("PCF8574 is OK...")); //(F()) saves string to flash & keeps dynamic memory free
+  delay(500);
 
-void readUltraSen()
+  lcd.clear();
+
+  /* prints static text */
+  lcd.setCursor(0, 1); //set 1-st colum & 2-nd row, 1-st colum & row started at zero
+  lcd.print(F("Hello world!"));
+
+  // print dynamic text
+  lcd.write(LCD_SPACE_SYMBOL);
+}
+
+void motor_CW()
+{
+  PORTH &= ~(1 << PWMIZQ1); // LOW Y OTRO HIGH ES PARA ATRAS
+  PORTH |= (1 << PWMIZQ0);
+
+  PORTE |= (1 << PWMDER1);
+  PORTG &= ~(1 << PWMDER0);
+
+  if (fadeValue < 447)
+  {
+    fadeValue++; // Valor max para 252 pwm
+  }
+
+  velPwm = funcPwm(fadeValue);
+  Serial.println(velPwm);
+
+  analogWrite(RENIZQ, velPwm); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
+  analogWrite(LENIZQ, velPwm); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
+  analogWrite(LENDER, velPwm); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
+  analogWrite(RENDER, velPwm); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
+
+  delay(10);
+}
+
+void motor_CCW()
+{
+  PORTH &= ~(1 << PWMIZQ0); // LOW Y OTRO HIGH ES PARA ATRAS
+  PORTH |= (1 << PWMIZQ1);
+
+  PORTE &= ~(1 << PWMDER1);
+  PORTG |= (1 << PWMDER0);
+
+  if (fadeValue < 447)
+  {
+    fadeValue++; // Valor max para 252 pwm
+  }
+
+  velPwm = funcPwm(fadeValue);
+  Serial.println(velPwm);
+
+  analogWrite(RENIZQ, velPwm); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
+  analogWrite(LENIZQ, velPwm); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
+  analogWrite(LENDER, velPwm); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
+  analogWrite(RENDER, velPwm); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
+
+  delay(10);
+}
+
+//Function buat motor STOP
+void motor_stop()
+{
+  //---------------------- FRENO SUAVE
+  if (velPwm > 0)
+  {
+    if (velPwm <= 2)
+    {
+      velPwm = 0;
+    }
+    else
+    {
+      velPwm--;
+    }
+    //Escribir velocidad decreciente
+    Serial.print("velPwm:  ");
+    Serial.println(velPwm);
+    analogWrite(RENDER, velPwm);
+    analogWrite(LENDER, velPwm);
+    analogWrite(RENIZQ, velPwm);
+    analogWrite(LENIZQ, velPwm);
+
+    if (velPwm > 100)
+    {
+      delay(3);
+    }
+    else
+    {
+      delay(100);
+    }
+  }
+
+  analogWrite(RENDER, 0);
+  analogWrite(LENDER, 0);
+  analogWrite(RENIZQ, 0);
+  analogWrite(LENIZQ, 0);
+
+  Serial.println("STOP");
+}
+
+/*
+  @brief Leer mux para sensoresde linea
+*/
+void readMuxIzq()
+{
+  for (size_t i = 0; i < 16; i++)
+  {
+    PORTA = (i & 0x01 << S0D) | (i & 0x02 << S1D) | (i & 0x04 << S2D) | (i & 0x08 << S3D);
+    /*digitalWrite(S0, i & 0x01);
+    digitalWrite(S1, i & 0x02);
+    digitalWrite(S2, i & 0x04);
+    digitalWrite(S3, i & 0x08);*/
+    if (i < 6) // FRONT
+    {
+      lineSenFront[i] = ADCGetData(SIGD); // leer canal
+      Serial.print(lineSenFront[i]);
+      Serial.print("---");
+    }
+    else if (i > 5 && i < 12) // BACK
+    {
+      lineSenBack[i - 6] = ADCGetData(SIGD); // leer canal
+      Serial.print(lineSenBack[i - 5]);
+      Serial.print("---");
+    }
+    else if (i > 11 && i < 14) // LATERALES IZQ
+    {
+      lineSenLatIzq[i - 12] = ADCGetData(SIGD);
+      Serial.print(lineSenLatIzq[i - 10]);
+      Serial.print("---");
+    }
+    else if (i > 13 && i < 16) // LATERALES DER
+    {
+      lineSenLatDer[i - 14] = ADCGetData(SIGD);
+      Serial.print(lineSenLatDer[i - 10]);
+      Serial.print("---");
+    }
+  }
+  Serial.println("");
+}
+
+/*
+  @brief Leer sensores distancia infrarojo
+*/
+void readDisIrSen()
+{
+  disIrSenValue[0] = ADCGetData(IRDISF); // leer dis front
+  disIrSenValue[1] = ADCGetData(IRDISB); // leer dis back
+}
+
+/*
+  @brief funcion exponencial para generar arranque suave  
+  @param tiempo
+*/
+uint8_t funcPwm(uint16_t &t)
+{
+  return (uint8_t)2 * exp(0.0108 * t);
+}
+
+void readUltrasonicSen()
 {
   static unsigned long previousMillis1 = 0;
   if ((millis() - previousMillis1) > 1000)
   {
     //-------------------------------------------------------------------------------
-    PORTC &= ~(1 << TRIG1BACKIZQ);
+    PORTC &= ~(1 << TRIG1BACKDER);
     //digitalWrite(TRIG, LOW); // Set the trigger pin to low for 2uS
     _delay_us(2);
 
     //digitalWrite(TRIG, HIGH); // Send a 10uS high to trigger ranging
-    PORTC |= (1 << TRIG1BACKIZQ);
+    PORTC |= (1 << TRIG1BACKDER);
     _delay_us(20);
 
     //digitalWrite(TRIG, LOW);                     // Send pin low again
-    PORTC &= ~(1 << TRIG1BACKIZQ);
-    distUltra[0] = pulseIn(ECHO1BACKIZQ, HIGH, 26000); // Read in times pulse
+    PORTC &= ~(1 << TRIG1BACKDER);
+    distUltra[0] = (float)pulseIn(ECHO1BACKDER, HIGH, 26000); // Read in times pulse
 
     distUltra[0] = distUltra[0] / 58; //13.3511 instead of 58 because the speed of a soundwave in water is far bigger than in air
 
     //-------------------------------------------------------------------------------
     //-------------------------------------------------------------------------------
-    PORTC &= ~(1 << TRIG2LATIZQ);
+    PORTC &= ~(1 << TRIG2BACKIZQ);
     //digitalWrite(TRIG, LOW); // Set the trigger pin to low for 2uS
     _delay_us(2);
 
     //digitalWrite(TRIG, HIGH); // Send a 10uS high to trigger ranging
-    PORTC |= (1 << TRIG2LATIZQ);
+    PORTC |= (1 << TRIG2BACKIZQ);
     _delay_us(20);
 
     //digitalWrite(TRIG, LOW);                     // Send pin low again
-    PORTC &= ~(1 << TRIG2LATIZQ);
-    distUltra[1] = pulseIn(ECHO2LATIZQECHO, HIGH, 26000); // Read in times pulse
+    PORTC &= ~(1 << TRIG2BACKIZQ);
+    distUltra[1] = (float)pulseIn(ECHO2BACKIZQ, HIGH, 26000); // Read in times pulse
 
     distUltra[1] = distUltra[1] / 58; //13.3511 instead of 58 because the speed of a soundwave in water is far bigger than in air
     //-------------------------------------------------------------------------------
     //-------------------------------------------------------------------------------
-    PORTC &= ~(1 << TRIG3FRONTLATIZQ);
+    PORTC &= ~(1 << TRIG3LATIZQ);
     //digitalWrite(TRIG, LOW); // Set the trigger pin to low for 2uS
     _delay_us(2);
 
     //digitalWrite(TRIG, HIGH); // Send a 10uS high to trigger ranging
-    PORTC |= (1 << TRIG3FRONTLATIZQ);
+    PORTC |= (1 << TRIG3LATIZQ);
     _delay_us(20);
 
     //digitalWrite(TRIG, LOW);                     // Send pin low again
-    PORTC &= ~(1 << TRIG3FRONTLATIZQ);
-    distUltra[2] = pulseIn(ECHO3FRONTLATIZQ, HIGH, 26000); // Read in times pulse
+    PORTC &= ~(1 << TRIG3LATIZQ);
+    distUltra[2] = (float)pulseIn(ECHO3LATIZQECHO, HIGH, 26000); // Read in times pulse
 
     distUltra[2] = distUltra[2] / 58; //13.3511 instead of 58 because the speed of a soundwave in water is far bigger than in air
     //-------------------------------------------------------------------------------
     //-------------------------------------------------------------------------------
-    PORTC &= ~(1 << TRIG4FRONTLATDER);
+    PORTC &= ~(1 << TRIG4FRONTLATIZQ);
     //digitalWrite(TRIG, LOW); // Set the trigger pin to low for 2uS
     _delay_us(2);
 
     //digitalWrite(TRIG, HIGH); // Send a 10uS high to trigger ranging
-    PORTC |= (1 << TRIG4FRONTLATDER);
+    PORTC |= (1 << TRIG4FRONTLATIZQ);
     _delay_us(20);
 
     //digitalWrite(TRIG, LOW);                     // Send pin low again
-    PORTC &= ~(1 << TRIG4FRONTLATDER);
-    distUltra[3] = pulseIn(ECHO4FRONTLATDER, HIGH, 26300); // Read in times pulse
+    PORTC &= ~(1 << TRIG4FRONTLATIZQ);
+    distUltra[3] = (float)pulseIn(ECHO4FRONTLATIZQ, HIGH, 26300); // Read in times pulse
 
     distUltra[3] = distUltra[3] / 58; //13.3511 instead of 58 because the speed of a soundwave in water is far bigger than in air
     //-------------------------------------------------------------------------------
     //-------------------------------------------------------------------------------
-    PORTD &= ~(1 << TRIG5LATDER);
+    PORTD &= ~(1 << TRIG5FRONTLATDER);
     //digitalWrite(TRIG, LOW); // Set the trigger pin to low for 2uS
     _delay_us(2);
 
     //digitalWrite(TRIG, HIGH); // Send a 10uS high to trigger ranging
-    PORTD |= (1 << TRIG5LATDER);
+    PORTD |= (1 << TRIG5FRONTLATDER);
     _delay_us(20);
 
     //digitalWrite(TRIG, LOW);                     // Send pin low again
-    PORTD &= ~(1 << TRIG5LATDER);
-    distUltra[4] = pulseIn(ECHO5LATDER, HIGH, 26000); // Read in times pulse
+    PORTD &= ~(1 << TRIG5FRONTLATDER);
+    distUltra[4] = (float)pulseIn(ECHO5FRONTLATDER, HIGH, 26000); // Read in times pulse
 
     distUltra[4] = distUltra[4] / 58; //13.3511 instead of 58 because the speed of a soundwave in water is far bigger than in air
 
     //-------------------------------------------------------------------------------
     //-------------------------------------------------------------------------------
-    PORTG &= ~(1 << TRIG6BACKDER);
+    PORTG &= ~(1 << TRIG6LATDER);
     //digitalWrite(TRIG, LOW); // Set the trigger pin to low for 2uS
     _delay_us(2);
 
     //digitalWrite(TRIG, HIGH); // Send a 10uS high to trigger ranging
-    PORTG |= (1 << TRIG6BACKDER);
+    PORTG |= (1 << TRIG6LATDER);
     _delay_us(20);
 
     //digitalWrite(TRIG, LOW);                     // Send pin low again
-    PORTG &= ~(1 << TRIG6BACKDER);
-    distUltra[5] = pulseIn(ECHO6BACKDER, HIGH, 26000); // Read in times pulse
+    PORTG &= ~(1 << TRIG6LATDER);
+    distUltra[5] = (float)pulseIn(ECHO6LATDER, HIGH, 26000); // Read in times pulse
 
     distUltra[5] = distUltra[5] / 58; //13.3511 instead of 58 because the speed of a soundwave in water is far bigger than in air
 
@@ -421,236 +527,10 @@ void readUltraSen()
     Serial.print("-- DISTANCE ULTRASONIC SENSOR: ");
     for (size_t i = 0; i < 6; i++)
     {
-      Serial.println(distUltra[i]);
+      Serial.print(distUltra[i]);
+      Serial.print("---");
     }
+    Serial.println("");
     previousMillis1 += 1000;
   }
-}
-
-void changeState()
-{
-  static unsigned long previousMillis3 = 0;
-  if ((millis() - previousMillis3) > 3000)
-  {
-    if (state > 2)
-    {
-      state = 0;
-    }
-    else
-    {
-      state = state + 1;
-    }
-
-    //fadeValue = 0;
-    //fadeValue1 = 0;
-
-    previousMillis3 += 3000;
-  }
-}
-
-//Function buat motor muter ke CW
-void motor_CW()
-{
-
-  //Serial.print((int)analogRead(A0)); // IZ
-  //Serial.print(" --- ");
-  //Serial.println((int)analogRead(A1)); // DER
-
-  //Other code here
-
-  digitalWrite(LPWMIZQ, LOW);
-  digitalWrite(RPWMIZQ, HIGH);
-
-  //-----------------------------------------------------------
-  if (fadeValue < 255)
-  {
-    if (fadeValue >= 245)
-    {
-      fadeValue = 255;
-    }
-    else
-    {
-      fadeValue++;
-    }
-    analogWrite(6, fadeValue); //PWMIZQ0
-    analogWrite(7, fadeValue); //PWMIZQ1
-    delay(50);
-  }
-
-  //-----------------------------------------------------------
-  analogWrite(6, 500); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
-  analogWrite(7, 500); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
-
-  digitalWrite(LPWMDER, LOW);
-  digitalWrite(RPWMDER, HIGH);
-  //-----------------------------------------------------------
-  if (fadeValue1 < 255)
-  {
-    if (fadeValue1 >= 245)
-    {
-      fadeValue1 = 255;
-    }
-    else
-    {
-      fadeValue1++;
-    }
-    analogWrite(4, fadeValue1); //PWMDER0
-    analogWrite(5, fadeValue1); //PWMDER1
-    delay(50);
-  }
-
-  //-----------------------------------------------------------
-  analogWrite(4, 500); //PWMDER0    Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
-  analogWrite(5, 500); // PWMDER1    Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
-
-  Serial.println("Muter Kanan");
-}
-
-//Function buat motor muter ke CCW
-void motor_CCW()
-{
-  //Serial.print((int)analogRead(A0)); // IZ
-  //Serial.print(" --- ");
-  //Serial.println((int)analogRead(A1)); // DER
-  digitalWrite(LPWMIZQ, HIGH);
-  digitalWrite(RPWMIZQ, LOW);
-  // ------------------------------------------------------
-  if (fadeValue < 255)
-  {
-    if (fadeValue >= 245)
-    {
-      fadeValue = 255;
-    }
-    else
-    {
-      fadeValue++;
-    }
-    analogWrite(6, fadeValue); //PWMIZQ0
-    analogWrite(7, fadeValue); //PWMIZQ1
-    delay(50);
-  }
-
-  //----------------------------------------------------
-  analogWrite(6, 500); //PWMIZQ0 //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
-  analogWrite(7, 500); //PWMIZQ1//Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
-
-  digitalWrite(LPWMDER, HIGH);
-  digitalWrite(RPWMDER, LOW);
-
-  if (fadeValue1 < 255)
-  {
-    if (fadeValue1 >= 245)
-    {
-      fadeValue1 = 255;
-    }
-    else
-    {
-      fadeValue1++;
-    }
-    analogWrite(4, fadeValue1); //PWMDER0
-    analogWrite(5, fadeValue1); //PWMDER1
-    delay(50);
-  }
-  analogWrite(4, 500); //PWMDER0 //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
-  analogWrite(5, 500); //PWMDER1 //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
-
-  //analogWrite(PWMDER0, 500); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
-  //analogWrite(PWMDER1, 500); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
-  Serial.println("Muter Kiri");
-}
-
-//Function buat motor STOP
-void motor_stop()
-{
-  digitalWrite(LPWMDER, LOW);
-  digitalWrite(RPWMDER, LOW);
-
-  if (fadeValue > 0)
-  {
-    if (fadeValue <= 15)
-    {
-      fadeValue = 0;
-    }
-    else
-    {
-      fadeValue--;
-    }
-    analogWrite(PWMDER0, fadeValue);
-    analogWrite(PWMDER1, fadeValue);
-    delay(50);
-  }
-
-  analogWrite(PWMDER0, 0); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
-  analogWrite(PWMDER1, 0); //Value "100" bisa diganti dengan speed yang diinginkan (0-1024), atau menggunakan input potensio, atau yang lain
-  //fadeValue = 0;
-
-  digitalWrite(LPWMIZQ, LOW);
-  digitalWrite(RPWMIZQ, LOW);
-
-  if (fadeValue1 > 0)
-  {
-    if (fadeValue1 <= 15)
-    {
-      fadeValue1 = 0;
-    }
-    else
-    {
-      fadeValue1--;
-    }
-    analogWrite(PWMIZQ0, fadeValue1);
-    analogWrite(PWMIZQ1, fadeValue1);
-    delay(50);
-  }
-
-  analogWrite(PWMIZQ0, 0); //Value "0" harus tetap 0, karena motornya diperintahkan untuk STOP
-  analogWrite(PWMIZQ1, 0); //Value "0" harus tetap 0, karena motornya diperintahkan untuk STOP
-
-  analogWrite(PWMDER0, 0); //Value "0" harus tetap 0, karena motornya diperintahkan untuk STOP
-  analogWrite(PWMDER1, 0); //Value "0" harus tetap 0, karena motornya diperintahkan untuk STOP
-  Serial.println("STOP");
-}
-
-/*
-  @brief Leer mux 1  
-  @param canal
-*/
-void readMuxIzq()
-{
-  for (size_t i = 0; i < 16; i++)
-  {
-    PORTA = (i & 0x01 << S0I) | (i & 0x02 << S1I) | (i & 0x04 << S2I) | (i & 0x08 << S3I);
-    /*digitalWrite(S0, i & 0x01);
-    digitalWrite(S1, i & 0x02);
-    digitalWrite(S2, i & 0x04);
-    digitalWrite(S3, i & 0x08);*/
-    if (i < 5)
-    {
-      lineSenBackIzq[i] = analogRead(SIGI); // leer canal
-      Serial.print(lineSenBackIzq[i]);
-      Serial.print("---");
-    }
-    else if (i > 5 && i < 10)
-    {
-      lineSenLatIzq[i - 5] = analogRead(SIGI); // leer canal
-      Serial.print(lineSenLatIzq[i - 5]);
-      Serial.print("---");
-    }
-    else if (i > 10 && i < 15)
-    {
-      lineSenFrontIzq[i - 10] = analogRead(SIGI);
-      Serial.print(lineSenFrontIzq[i - 10]);
-      Serial.print("---");
-    }
-  }
-  Serial.println("");
-}
-
-/*
-  @brief Leer sensores distancia infrarojo  
-  @param canal
-*/
-void readDisIrSen()
-{
-  disIrSenValue[0] = ADCGetData(IRDISF); // leer dis front
-  disIrSenValue[1] = ADCGetData(IRDISB); // leer dis back
 }
