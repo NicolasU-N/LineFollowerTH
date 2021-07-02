@@ -18,9 +18,8 @@ extern "C"
 	void PWM_on();
 	void PWM_off();
 
-	void setDutyPWMA(int duty);
-	void setDutyPWMB(int duty);
-	void setDutyPWMC(int duty);
+	void setDutyPWMIZQ(int duty);
+	void setDutyPWMDER(int duty);
 #ifdef __cplusplus
 }
 #endif
