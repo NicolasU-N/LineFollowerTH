@@ -147,6 +147,34 @@ LiquidCrystal_I2C lcd(PCF8574_ADDR_A21_A11_A01, 4, 5, 6, 16, 11, 12, 13, 14, POS
 // ------------------- INICIALIZAR FUNCIONES
 int funcPwm(uint16_t &t);
 
+// -------------------------------------- PID
+float KP = 0.25;  //constante proporcional 0.25
+float KD = 8.5;   //constante derivativa
+float KI = 0.001; //constante integral
+
+int vel = 50;       //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
+int velrecta = 255; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
+int velcurva = 40;  //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
+// --------------------------------------
+
+// -------------------------------------- SENSORES
+volatile uint16_t sensores[6];
+uint8_t factor = 100; // factor multiplicativo sensor promedio ponderado (calculo de posicion)
+int posicion;
+int lastpos;
+// --------------------------------------
+
+// ---------- Variable PID ----------
+int proporcional = 0;
+int integral = 0;
+int derivativo = 0;
+int diferencial = 0;
+int last_prop;
+int setpoint = 450; // Mitad de sensores
+
+// datos para la integral
+int errors[6];
+
 void motor_stop();
 void motor_CW();
 void motor_CCW();
@@ -454,25 +482,25 @@ void readMuxIzq()
     digitalWrite(S3, i & 0x08);*/
     if (i < 6) // FRONT
     {
-      lineSenFront[i] = ADCGetData(SIGD); // leer canal
+      lineSenFront[i] = ADCGetData(SIGD); // leer canal TODO: UMBRAL
       Serial.print(lineSenFront[i]);
       Serial.print("---");
     }
     else if (i > 5 && i < 12) // BACK
     {
-      lineSenBack[i - 6] = ADCGetData(SIGD); // leer canal
+      lineSenBack[i - 6] = ADCGetData(SIGD); // leer canal TODO: UMBRAL
       Serial.print(lineSenBack[i - 5]);
       Serial.print("---");
     }
     else if (i > 11 && i < 14) // LATERALES IZQ
     {
-      lineSenLatIzq[i - 12] = ADCGetData(SIGD);
+      lineSenLatIzq[i - 12] = ADCGetData(SIGD); //TODO: UMBRAL
       Serial.print(lineSenLatIzq[i - 10]);
       Serial.print("---");
     }
     else if (i > 13 && i < 16) // LATERALES DER
     {
-      lineSenLatDer[i - 14] = ADCGetData(SIGD);
+      lineSenLatDer[i - 14] = ADCGetData(SIGD); //TODO: UMBRAL
       Serial.print(lineSenLatDer[i - 10]);
       Serial.print("---");
     }
@@ -481,16 +509,126 @@ void readMuxIzq()
 }
 
 /*
-  @brief Leer sensores distancia infrarojo
+  @brief Leer mux para sensoresde linea
+  @param diection TRUE es para seleccionar 
+         barra delantera FALSE para seleccionar barra trasera
 */
-void readDisIrSen()
+int calcPosicion(boolean direction)
 {
-  disIrSenValue[0] = ADCGetData(IRDISF); // leer dis front
-  disIrSenValue[1] = ADCGetData(IRDISB); // leer dis back
-  Serial.print("----> DIS IR: ");
-  Serial.print(disIrSenValue[0]);
-  Serial.print("---");
-  Serial.print(disIrSenValue[1]);
+  unsigned long sumap = 0;
+  int suma = 0;
+  int pos = 0;
+  for (uint8_t i = 0; i < 6; i++) // 6 sensores
+  {
+    sumap += direction ? lineSenFront[i] * (i + 1) * factor : lineSenBack[i] * (i + 1) * factor;
+    suma += direction ? lineSenFront[i] : lineSenBack[i];
+  }
+  pos = (sumap / suma);
+
+  if (lastpos <= 100 && pos == -1)
+  {
+    pos = 0;
+  }
+  else if (lastpos >= 500 && pos == -1)
+  {
+    pos = 600;
+  }
+  lastpos = pos;
+  return pos;
+}
+
+/*
+  @brief Calcular corecion para aplicar a los motores
+*/
+void PID()
+{
+  proporcional = posicion - setpoint;
+  derivativo = proporcional - last_prop;
+
+  for (uint8_t i = 0; i < 6; i++)
+  {
+    integral += errors[i];
+  }
+
+  last_prop = proporcional;
+
+  errors[5] = errors[4];
+  errors[4] = errors[3];
+  errors[3] = errors[2];
+  errors[2] = errors[1];
+  errors[1] = errors[0];
+  errors[0] = proporcional;
+
+  diferencial = (proporcional * KP) + (derivativo * KD) + (integral * KI);
+
+  if (diferencial > vel)
+  {
+    diferencial = vel;
+  }
+  else if (diferencial < -vel)
+  {
+    diferencial = -vel;
+  }
+
+  diferencial < 0 ? motores(vel, vel + diferencial) : motores(vel - diferencial, vel);
+}
+
+/*
+ @brief Escribir en motores
+ @param velocidad izquierda velocidad deecha
+*/
+void motores(int izq, int der)
+{
+  //----------- MOT IZQ -----------
+  if (izq >= 0)
+  {
+    //ADELANTE
+    //PORTD |= (1 << MOT_IZQ_ADELANTE); // MOTOR ON
+    //PORTD &= ~(1 << MOT_IZQ_ATRAS);   // MOTOR OFF
+
+    // ADELANTE MOTOR IZQ
+    PORTH &= ~(1 << PWMIZQ1);
+    PORTH |= (1 << PWMIZQ0);
+  }
+  else
+  {
+    //ATRAS
+    //PORTD &= ~(1 << MOT_IZQ_ADELANTE); // MOTOR ON
+    //PORTD |= (1 << MOT_IZQ_ATRAS);     // MOTOR OFF
+    PORTH |= (1 << PWMIZQ1);
+    PORTH &= ~(1 << PWMIZQ0);
+    izq = abs(izq); // convert to positive value
+  }
+  //Escribir PWM MOT IZQ
+  //izq = map(izq, 0, 255, 1, 100);
+  setDutyPWMIZQ(izq); // 0...255 TO 0...100
+
+  //Serial.print(izq);
+  //Serial.print("\t");
+
+  //----------- MOT DER -----------
+  if (der >= 0)
+  {
+    //ADELANTE
+    //PORTB |= (1 << MOT_DER_ADELANTE); // MOTOR ON
+    //PORTD &= ~(1 << MOT_DER_ATRAS);   // MOTOR OFF
+    PORTE |= (1 << PWMDER1);
+    PORTG &= ~(1 << PWMDER0);
+  }
+  else
+  {
+    //ATRAS
+    //PORTB &= ~(1 << MOT_DER_ADELANTE); // MOTOR ON
+    //PORTD |= (1 << MOT_DER_ATRAS);     // MOTOR OFF
+
+    PORTE &= ~(1 << PWMDER1);
+    PORTG |= (1 << PWMDER0);
+    der = abs(der); // convert to positive value
+  }
+  //Escribir PWM MOT DER
+  //der = map(der, 0, 255, 1, 100);
+  setDutyPWMDER(der); // 0...255 TO 0...100
+  //Serial.println(der);
 }
 
 /*
@@ -514,6 +652,19 @@ void readLoadCell()
   {
     Serial.println("HX711 not found.");
   }
+}
+
+/*
+  @brief Leer sensores distancia infrarojo
+*/
+void readDisIrSen()
+{
+  disIrSenValue[0] = ADCGetData(IRDISF); // leer dis front
+  disIrSenValue[1] = ADCGetData(IRDISB); // leer dis back
+  Serial.print("----> DIS IR: ");
+  Serial.print(disIrSenValue[0]);
+  Serial.print("---");
+  Serial.print(disIrSenValue[1]);
 }
 
 void readUltrasonicSen()
