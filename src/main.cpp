@@ -65,9 +65,9 @@ Physical Pin      Arduino Pin    Port Pin     Function
 #define S1D PORTA1 //23  // OUTPUT
 #define S3D PORTA2 //24  // OUTPUT
 #define S2D PORTA3 //25  // OUTPUT
-#define SIGD 0     //A0 // INPUT CANAL 0
+#define SIGD 1     //A0 // INPUT CANAL 0
 
-#define BATTLEVEL 1 //A1 // INPUT CANAL 1
+#define BATTLEVEL 2 //A1 // INPUT CANAL 1
 
 //Pines Sensor distancia infrarojo
 #define IRDISF 2 //Input Analog CANAL 2
@@ -88,7 +88,7 @@ Physical Pin      Arduino Pin    Port Pin     Function
 
 #define BTNFRONTF 18 // PORTD3 Input
 #define BTNFRONTB 19 // PORTD2 Input
-#define BTNLINE 15   // PJ0 Input
+#define BTNLINE PK7  //PK7 // PJ0 Input
 
 #define TRIG1BACKDER PORTC7 //30
 #define ECHO1BACKDER 31     //PC6 Ultrasonic sensor 1
@@ -175,6 +175,7 @@ int setpoint = 450; // Mitad de sensores
 // datos para la integral
 int errors[6];
 
+void motores(int izq, int der);
 void motor_stop();
 void motor_CW();
 void motor_CCW();
@@ -230,7 +231,7 @@ ISR(INT3_vect)
   lastintetime = interruptiontime;
 }
 
-ISR(PCINT1_vect)
+ISR(PCINT23_vect)
 {
   static unsigned long lastintetime = 0;
   unsigned long interruptiontime = millis();
@@ -274,10 +275,17 @@ void setup()
   PWM_init();
   PWM_on();
 
-  //-----------CONFIGURACION PINES DE SALIDA BTNS LEDS  Y MUX SIGNALS
-  DDRA |= (1 << DDA0) | (1 << DDA1) | (1 << DDA2) | (1 << DDA3); // OUTPUT MUX SIGNALS
+  // ENTRADA SENSORES DE LINEA
+  DDRJ &= ~((1 << DDJ1) | (1 << DDJ0));
+  DDRH &= ~((1 << DDH1) | (1 << DDH0));
+  DDRD &= ~((1 << DDD2) | (1 << DDD3));
 
-  DDRL |= (1 << DDL6) | (1 << DDL7) | (1 << DDL5) | (1 << DDL3); // LUZ , BUZZER ALARMA, COLOR LED EMERGENCY , COMUN LUZ LED BTNS
+  DDRA &= ~(0xFF); // INPUTS SENSORES DE LINEA
+
+  DDRL &= ~((1 << DDL2) | (1 << DDL3));
+
+  //-----------CONFIGURACION PINES DE SALIDA BTNS LEDS
+  DDRL |= (1 << DDL7) | (1 << DDL6) | (1 << DDL5) | (1 << DDL4); // BUZZER , LUZ ,  ALARMA, COLOR LED EMERGENCY , COMUN LUZ LED BTNS
 
   //----------- CONFIGURACION PINES DE SALIDA PUENTE H Y ULTRASONICOS
   DDRC |= (1 << DDC1) | (1 << DDC3) | (1 << DDC5) | (1 << DDC7); // TRIG ULTRASONIC SENSOR
@@ -302,8 +310,8 @@ void setup()
   EIMSK |= ((1 << INT2) | (1 << INT3)); // ACTIVAR INTERRUPCION | (1 << INT4) | (1 << INT5)
 
   //---------------------- CONFIGUACION INTERRUPCION BTNLINE -------------------
-  PCICR |= (1 << PCIE1);   //ACTIVAR INTERRUPCION PCINT15:8 INTERES(PCINT9)
-  PCMSK2 |= (1 << PCINT9); // ACTIVR MASK PCINT9
+  PCICR |= (1 << PCIE2);    //ACTIVAR INTERRUPCION PCINT15:8 INTERES(PCINT9)
+  PCMSK2 |= (1 << PCINT23); // ACTIVR MASK PCINT9
 
   //----------- PINES PULL UP ULTRASONICOS
 
@@ -325,9 +333,9 @@ void loop()
   if ((millis() - previousMillis1) > 1000)
   {
     //------------DO
-    readUltrasonicSen();
+    //readUltrasonicSen();
+    //readLoadCell();
     readMuxIzq();
-    readLoadCell();
 
     previousMillis1 += 1000;
   }
@@ -382,15 +390,15 @@ void motor_CW()
   }
 
   velPwm = funcPwm(fadeValue);
-  Serial.println(velPwm);
+  //Serial.println(velPwm);
 
-  //setDutyPWMIZQ(velPwm);
-  //setDutyPWMDER(velPwm);
+  setDutyPWMIZQ(velPwm);
+  setDutyPWMDER(velPwm);
 
   //analogWrite(RENIZQ, velPwm);
   //analogWrite(LENIZQ, velPwm);
-  analogWrite(ENDER, velPwm);
-  analogWrite(ENIZQ, velPwm);
+  //analogWrite(ENDER, velPwm);
+  //analogWrite(ENIZQ, velPwm);
 
   delay(10);
 }
@@ -409,12 +417,12 @@ void motor_CCW()
   }
 
   velPwm = funcPwm(fadeValue);
-  Serial.println(velPwm);
+  //Serial.println(velPwm);
 
-  analogWrite(ENDER, velPwm);
-  analogWrite(ENIZQ, velPwm);
-  //setDutyPWMIZQ(velPwm);
-  //setDutyPWMDER(velPwm);
+  //analogWrite(ENDER, velPwm);
+  //analogWrite(ENIZQ, velPwm);
+  setDutyPWMIZQ(velPwm);
+  setDutyPWMDER(velPwm);
   //analogWrite(RENIZQ, velPwm);
   //analogWrite(LENIZQ, velPwm);
   //analogWrite(LENDER, velPwm);
@@ -438,8 +446,8 @@ void motor_stop()
       velPwm--;
     }
     //Escribir velocidad decreciente
-    Serial.print("velPwm:  ");
-    Serial.println(velPwm);
+    //Serial.print("velPwm:  ");
+    //Serial.println(velPwm);
     //analogWrite(RENDER, velPwm);
     //analogWrite(LENDER, velPwm);
     //analogWrite(RENIZQ, velPwm);
@@ -456,26 +464,38 @@ void motor_stop()
     }
   }
 
-  analogWrite(ENDER, 0);
-  analogWrite(ENIZQ, 0);
-  //setDutyPWMIZQ(0); //STOP
-  //setDutyPWMDER(0);
+  //analogWrite(ENDER, 0);
+  //analogWrite(ENIZQ, 0);
+  setDutyPWMIZQ(0); //STOP
+  setDutyPWMDER(0);
   //analogWrite(RENDER, 0);
   //analogWrite(LENDER, 0);
   //analogWrite(RENIZQ, 0);
   //analogWrite(LENIZQ, 0);
 
-  Serial.println("STOP");
+  //Serial.println("STOP");
 }
 
 /*
   @brief Leer mux para sensoresde linea
 */
-void readMuxIzq()
+void readSensLinea()
 {
+
   for (size_t i = 0; i < 16; i++)
   {
-    PORTA = (i & 0x01 << S0D) | (i & 0x02 << S1D) | (i & 0x04 << S2D) | (i & 0x08 << S3D);
+    //PORTA = (((i & 0x01) > 0 ? 1 : 0) << S0D) | (((i & 0x02) > 0 ? 1 : 0) << S1D) | (((i & 0x04) > 0 ? 1 : 0) << S2D) | (((i & 0x08) > 0 ? 1 : 0) << S3D);
+
+    /*
+    Serial.print((i & 0x01) > 0 ? 1 : 0);
+    Serial.print("----");
+    Serial.print((i & 0x02) > 0 ? 1 : 0);
+    Serial.print("----");
+    Serial.print((i & 0x04) > 0 ? 1 : 0);
+    Serial.print("----");
+    Serial.print((i & 0x08) > 0 ? 1 : 0);
+    Serial.println("");
+    */
     /*digitalWrite(S0, i & 0x01);
     digitalWrite(S1, i & 0x02);
     digitalWrite(S2, i & 0x04);
@@ -484,25 +504,33 @@ void readMuxIzq()
     {
       lineSenFront[i] = ADCGetData(SIGD); // leer canal TODO: UMBRAL
       Serial.print(lineSenFront[i]);
-      Serial.print("---");
+      Serial.print("--");
+      Serial.print(i);
+      Serial.print("--");
     }
     else if (i > 5 && i < 12) // BACK
     {
       lineSenBack[i - 6] = ADCGetData(SIGD); // leer canal TODO: UMBRAL
       Serial.print(lineSenBack[i - 5]);
-      Serial.print("---");
+      Serial.print("--");
+      Serial.print(i);
+      Serial.print("--");
     }
     else if (i > 11 && i < 14) // LATERALES IZQ
     {
       lineSenLatIzq[i - 12] = ADCGetData(SIGD); //TODO: UMBRAL
       Serial.print(lineSenLatIzq[i - 10]);
-      Serial.print("---");
+      Serial.print("--");
+      Serial.print(i);
+      Serial.print("--");
     }
     else if (i > 13 && i < 16) // LATERALES DER
     {
       lineSenLatDer[i - 14] = ADCGetData(SIGD); //TODO: UMBRAL
       Serial.print(lineSenLatDer[i - 10]);
-      Serial.print("---");
+      Serial.print("--");
+      Serial.print(i);
+      Serial.print("--");
     }
   }
   Serial.println("");
@@ -513,15 +541,15 @@ void readMuxIzq()
   @param diection TRUE es para seleccionar 
          barra delantera FALSE para seleccionar barra trasera
 */
-int calcPosicion(boolean direction)
+int calcPosicion()
 {
   unsigned long sumap = 0;
   int suma = 0;
   int pos = 0;
   for (uint8_t i = 0; i < 6; i++) // 6 sensores
   {
-    sumap += direction ? lineSenFront[i] * (i + 1) * factor : lineSenBack[i] * (i + 1) * factor;
-    suma += direction ? lineSenFront[i] : lineSenBack[i];
+    sumap += state == BACKF ? lineSenFront[i] * (i + 1) * factor : lineSenBack[i] * (i + 1) * factor;
+    suma += state == BACKF ? lineSenFront[i] : lineSenBack[i];
   }
   pos = (sumap / suma);
 
@@ -586,17 +614,36 @@ void motores(int izq, int der)
     //PORTD |= (1 << MOT_IZQ_ADELANTE); // MOTOR ON
     //PORTD &= ~(1 << MOT_IZQ_ATRAS);   // MOTOR OFF
 
-    // ADELANTE MOTOR IZQ
-    PORTH &= ~(1 << PWMIZQ1);
-    PORTH |= (1 << PWMIZQ0);
+    //TODO : CONDICIONAL CAMBIAR DE DIRECCION EGUN EL ESTADO
+    if (state == BACKF)
+    {
+      // ADELANTE MOTOR IZQ
+      PORTH &= ~(1 << PWMIZQ1);
+      PORTH |= (1 << PWMIZQ0);
+    }
+    else // en reversa
+    {
+      PORTH |= (1 << PWMIZQ1);
+      PORTH &= ~(1 << PWMIZQ0);
+    }
   }
   else
   {
     //ATRAS
     //PORTD &= ~(1 << MOT_IZQ_ADELANTE); // MOTOR ON
     //PORTD |= (1 << MOT_IZQ_ATRAS);     // MOTOR OFF
-    PORTH |= (1 << PWMIZQ1);
-    PORTH &= ~(1 << PWMIZQ0);
+    if (state == BACKF)
+    {
+      PORTH |= (1 << PWMIZQ1);
+      PORTH &= ~(1 << PWMIZQ0);
+    }
+    else
+    {
+      // ADELANTE MOTOR IZQ
+      PORTH &= ~(1 << PWMIZQ1);
+      PORTH |= (1 << PWMIZQ0);
+    }
+
     izq = abs(izq); // convert to positive value
   }
   //Escribir PWM MOT IZQ
@@ -612,17 +659,34 @@ void motores(int izq, int der)
     //ADELANTE
     //PORTB |= (1 << MOT_DER_ADELANTE); // MOTOR ON
     //PORTD &= ~(1 << MOT_DER_ATRAS);   // MOTOR OFF
-    PORTE |= (1 << PWMDER1);
-    PORTG &= ~(1 << PWMDER0);
+
+    if (state == BACKF)
+    {
+      PORTE |= (1 << PWMDER1);
+      PORTG &= ~(1 << PWMDER0);
+    }
+    else
+    {
+      PORTE &= ~(1 << PWMDER1);
+      PORTG |= (1 << PWMDER0);
+    }
   }
   else
   {
     //ATRAS
     //PORTB &= ~(1 << MOT_DER_ADELANTE); // MOTOR ON
     //PORTD |= (1 << MOT_DER_ATRAS);     // MOTOR OFF
+    if (state == BACKF)
+    {
+      PORTE &= ~(1 << PWMDER1);
+      PORTG |= (1 << PWMDER0);
+    }
+    else
+    {
+      PORTE |= (1 << PWMDER1);
+      PORTG &= ~(1 << PWMDER0);
+    }
 
-    PORTE &= ~(1 << PWMDER1);
-    PORTG |= (1 << PWMDER0);
     der = abs(der); // convert to positive value
   }
   //Escribir PWM MOT DER
