@@ -61,13 +61,14 @@ Physical Pin      Arduino Pin    Port Pin     Function
 #define LCD_SPACE_SYMBOL 0x20 //space symbol from the LCD ROM, see p.9 of GDM2004D datasheet
 // ------------------------------------
 
-#define S0D PORTA0 //22  // OUTPUT
-#define S1D PORTA1 //23  // OUTPUT
-#define S3D PORTA2 //24  // OUTPUT
-#define S2D PORTA3 //25  // OUTPUT
-#define SIGD 1     //A0 // INPUT CANAL 0
+//#define S0D PORTA0 //22  // OUTPUT
+//#define S1D PORTA1 //23  // OUTPUT
+//#define S3D PORTA2 //24  // OUTPUT
+//#define S2D PORTA3 //25  // OUTPUT
+//#define SIGD 1     //A0 // INPUT CANAL 0
 
-#define BATTLEVEL 2 //A1 // INPUT CANAL 1
+#define BATTLEVEL 4 //A4 // INPUT CANAL 1
+#define MOTLEVEL 5  //A5 // INPUT CANAL 1
 
 //Pines Sensor distancia infrarojo
 #define IRDISF 2 //Input Analog CANAL 2
@@ -85,6 +86,7 @@ Physical Pin      Arduino Pin    Port Pin     Function
 #define PWMDER1 PORTE3 // 5 PORTE3
 
 #define BUZZER PORTL7 //42 Output
+#define LUZ PORTL6    //43 Output
 
 #define BTNFRONTF 18 // PORTD3 Input
 #define BTNFRONTB 19 // PORTD2 Input
@@ -115,7 +117,7 @@ Physical Pin      Arduino Pin    Port Pin     Function
 #define FINISH 3
 #define CHARGE 4
 
-uint8_t state = 2;
+uint8_t state = 0;
 
 uint8_t linestatus = 1; //1 -> negro 0->blanco
 
@@ -144,9 +146,6 @@ long loadcellvalue;
 // ------------------- LCD INIT
 LiquidCrystal_I2C lcd(PCF8574_ADDR_A21_A11_A01, 4, 5, 6, 16, 11, 12, 13, 14, POSITIVE);
 
-// ------------------- INICIALIZAR FUNCIONES
-int funcPwm(uint16_t &t);
-
 // -------------------------------------- PID
 float KP = 0.25;  //constante proporcional 0.25
 float KD = 8.5;   //constante derivativa
@@ -158,7 +157,7 @@ int velcurva = 40;  //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
 // --------------------------------------
 
 // -------------------------------------- SENSORES
-volatile uint16_t sensores[6];
+//volatile uint16_t sensores[6];
 uint8_t factor = 100; // factor multiplicativo sensor promedio ponderado (calculo de posicion)
 int posicion;
 int lastpos;
@@ -170,20 +169,24 @@ int integral = 0;
 int derivativo = 0;
 int diferencial = 0;
 int last_prop;
-int setpoint = 450; // Mitad de sensores
+int setpoint = 350; // Mitad de sensores
 
 // datos para la integral
 int errors[6];
+
+// ------------------- INICIALIZAR FUNCIONES
+int funcPwm(uint16_t &t);
 
 void motores(int izq, int der);
 void motor_stop();
 void motor_CW();
 void motor_CCW();
 
+void readVoltage();
 void readLoadCell();
 void readUltrasonicSen();
 void readDisIrSen();
-void readMuxIzq();
+void readSensLinea();
 void initLCD();
 
 ISR(INT2_vect) //
@@ -231,7 +234,7 @@ ISR(INT3_vect)
   lastintetime = interruptiontime;
 }
 
-ISR(PCINT23_vect)
+ISR(PCINT2_vect)
 {
   static unsigned long lastintetime = 0;
   unsigned long interruptiontime = millis();
@@ -275,14 +278,14 @@ void setup()
   PWM_init();
   PWM_on();
 
-  // ENTRADA SENSORES DE LINEA
+  //-----------ENTRADA SENSORES DE LINEA
   DDRJ &= ~((1 << DDJ1) | (1 << DDJ0));
   DDRH &= ~((1 << DDH1) | (1 << DDH0));
-  DDRD &= ~((1 << DDD2) | (1 << DDD3));
+  //DDRD &= ~((1 << DDD2) | (1 << DDD3)); // no se pueden usar por botoneras
 
   DDRA &= ~(0xFF); // INPUTS SENSORES DE LINEA
 
-  DDRL &= ~((1 << DDL2) | (1 << DDL3));
+  DDRL &= ~((1 << DDL2) | (1 << DDL3) | (1 << DDL1) | (1 << DDL0)); // 47 46 48 49
 
   //-----------CONFIGURACION PINES DE SALIDA BTNS LEDS
   DDRL |= (1 << DDL7) | (1 << DDL6) | (1 << DDL5) | (1 << DDL4); // BUZZER , LUZ ,  ALARMA, COLOR LED EMERGENCY , COMUN LUZ LED BTNS
@@ -321,6 +324,18 @@ void setup()
   PORTC |= (1 << PORTC6) | (1 << PORTC4) | (1 << PORTC2) | (1 << PORTC0);
   PORTG |= (1 << PORTG2) | (1 << PORTG0);
 
+  //----------- ESTADO INICIAL
+  // COMUN RELE
+  PORTL |= (1 << PORTL4);
+  _delay_us(500000);
+  PORTL &= ~(1 << PORTL4); // Activado
+  _delay_us(500000);
+
+  PORTL |= (1 << PORTL5);
+  _delay_us(500000);
+  PORTL &= ~(1 << PORTL5); // Activado
+  _delay_us(500000);
+
   sei();
 }
 
@@ -335,7 +350,8 @@ void loop()
     //------------DO
     //readUltrasonicSen();
     //readLoadCell();
-    readMuxIzq();
+    readSensLinea();
+    //readVoltage();
 
     previousMillis1 += 1000;
   }
@@ -348,6 +364,12 @@ void loop()
 
   case BACKB:
     motor_CCW();
+
+    //readSensLinea();
+    //posicion = calcPosicion();
+    //PID();
+    //TODO: implementar funcion para girar cuando detecta marcas
+
     break;
 
   case STOP:
@@ -399,7 +421,7 @@ void motor_CW()
   //analogWrite(LENIZQ, velPwm);
   //analogWrite(ENDER, velPwm);
   //analogWrite(ENIZQ, velPwm);
-
+  Serial.println("CW");
   delay(10);
 }
 
@@ -427,7 +449,7 @@ void motor_CCW()
   //analogWrite(LENIZQ, velPwm);
   //analogWrite(LENDER, velPwm);
   //analogWrite(RENDER, velPwm);
-
+  Serial.println("CCW");
   delay(10);
 }
 
@@ -481,12 +503,9 @@ void motor_stop()
 */
 void readSensLinea()
 {
+  //PORTA = (((i & 0x01) > 0 ? 1 : 0) << S0D) | (((i & 0x02) > 0 ? 1 : 0) << S1D) | (((i & 0x04) > 0 ? 1 : 0) << S2D) | (((i & 0x08) > 0 ? 1 : 0) << S3D);
 
-  for (size_t i = 0; i < 16; i++)
-  {
-    //PORTA = (((i & 0x01) > 0 ? 1 : 0) << S0D) | (((i & 0x02) > 0 ? 1 : 0) << S1D) | (((i & 0x04) > 0 ? 1 : 0) << S2D) | (((i & 0x08) > 0 ? 1 : 0) << S3D);
-
-    /*
+  /*
     Serial.print((i & 0x01) > 0 ? 1 : 0);
     Serial.print("----");
     Serial.print((i & 0x02) > 0 ? 1 : 0);
@@ -496,43 +515,55 @@ void readSensLinea()
     Serial.print((i & 0x08) > 0 ? 1 : 0);
     Serial.println("");
     */
-    /*digitalWrite(S0, i & 0x01);
+  /*digitalWrite(S0, i & 0x01);
     digitalWrite(S1, i & 0x02);
     digitalWrite(S2, i & 0x04);
     digitalWrite(S3, i & 0x08);*/
-    if (i < 6) // FRONT
-    {
-      lineSenFront[i] = ADCGetData(SIGD); // leer canal TODO: UMBRAL
-      Serial.print(lineSenFront[i]);
-      Serial.print("--");
-      Serial.print(i);
-      Serial.print("--");
-    }
-    else if (i > 5 && i < 12) // BACK
-    {
-      lineSenBack[i - 6] = ADCGetData(SIGD); // leer canal TODO: UMBRAL
-      Serial.print(lineSenBack[i - 5]);
-      Serial.print("--");
-      Serial.print(i);
-      Serial.print("--");
-    }
-    else if (i > 11 && i < 14) // LATERALES IZQ
-    {
-      lineSenLatIzq[i - 12] = ADCGetData(SIGD); //TODO: UMBRAL
-      Serial.print(lineSenLatIzq[i - 10]);
-      Serial.print("--");
-      Serial.print(i);
-      Serial.print("--");
-    }
-    else if (i > 13 && i < 16) // LATERALES DER
-    {
-      lineSenLatDer[i - 14] = ADCGetData(SIGD); //TODO: UMBRAL
-      Serial.print(lineSenLatDer[i - 10]);
-      Serial.print("--");
-      Serial.print(i);
-      Serial.print("--");
-    }
+  // FRONT
+
+  lineSenFront[0] = PINJ & (1 << PINJ1);
+  lineSenFront[1] = PINJ & (1 << PINJ0);
+  lineSenFront[2] = PINH & (1 << PINH1);
+  lineSenFront[3] = PINH & (1 << PINH0);
+  lineSenFront[4] = PINL & (1 << PINL1);
+  lineSenFront[5] = PINL & (1 << PINL0);
+
+  for (size_t i = 0; i < 6; i++)
+  {
+    Serial.print(lineSenFront[i]);
+    Serial.print("--");
   }
+
+  lineSenLatDer[0] = PINA & (1 << PINA0);
+  lineSenLatDer[1] = PINA & (1 << PINA1);
+
+  for (size_t i = 0; i < 2; i++)
+  {
+    Serial.print(lineSenLatDer[i]);
+    Serial.print("--");
+  }
+
+  lineSenBack[0] = PINA & (1 << PINA2);
+  lineSenBack[1] = PINA & (1 << PINA3);
+  lineSenBack[2] = PINA & (1 << PINA4);
+  lineSenBack[3] = PINA & (1 << PINA5);
+  lineSenBack[4] = PINA & (1 << PINA6);
+  lineSenBack[5] = PINA & (1 << PINA7);
+  for (size_t i = 0; i < 6; i++)
+  {
+    Serial.print(lineSenBack[i]);
+    Serial.print("--");
+  }
+
+  lineSenLatIzq[0] = PINL & (1 << PINL3);
+  lineSenLatIzq[1] = PINL & (1 << PINL2);
+
+  for (size_t i = 0; i < 2; i++)
+  {
+    Serial.print(lineSenLatIzq[i]);
+    Serial.print("--");
+  }
+
   Serial.println("");
 }
 
@@ -716,6 +747,27 @@ void readLoadCell()
   {
     Serial.println("HX711 not found.");
   }
+}
+
+/*
+  @brief Medir nivel de bateria
+*/
+void readVoltage()
+{
+  uint16_t read = ADCGetData(BATTLEVEL);
+  uint16_t level = map(read, 0, 1023, 0, 4700);
+
+  if (level <= 3900)
+  {
+    chargeFlag = true;
+  }
+  else
+  {
+    chargeFlag = false;
+  }
+
+  Serial.print("-----> NIVEL DE BAT: ");
+  Serial.println(level);
 }
 
 /*
