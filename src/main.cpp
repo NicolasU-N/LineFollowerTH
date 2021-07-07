@@ -47,7 +47,7 @@ Physical Pin      Arduino Pin    Port Pin     Function
 #include <ADC.h>
 #include <PWM.h>
 #include <Wire.h>
-#include <LiquidCrystal_I2C.h>
+#include <LiquidCrystal_I2C_Hangul.h>
 #include <HX711.h>
 
 // ------------- HX711
@@ -55,10 +55,7 @@ Physical Pin      Arduino Pin    Port Pin     Function
 #define LOADCELL_SCK_PIN 3
 
 // ------------- LCD ------------------
-#define COLUMS 20
-#define ROWS 4
-
-#define LCD_SPACE_SYMBOL 0x20 //space symbol from the LCD ROM, see p.9 of GDM2004D datasheet
+LiquidCrystal_I2C_Hangul lcd(0x27, 20, 4); //LCD 클래스 초기화
 // ------------------------------------
 
 //#define S0D PORTA0 //22  // OUTPUT
@@ -143,9 +140,6 @@ volatile uint16_t disIrSenValue[2];
 HX711 hx711;
 long loadcellvalue;
 
-// ------------------- LCD INIT
-LiquidCrystal_I2C lcd(PCF8574_ADDR_A21_A11_A01, 4, 5, 6, 16, 11, 12, 13, 14, POSITIVE);
-
 // -------------------------------------- PID
 float KP = 0.25;  //constante proporcional 0.25
 float KD = 8.5;   //constante derivativa
@@ -228,8 +222,22 @@ ISR(INT3_vect)
     else
     {
       PWM_on();
-      state = BACKF;
+      state = STOP;
     }
+  }
+  lastintetime = interruptiontime;
+}
+
+ISR(INT4_vect)
+{
+  static unsigned long lastintetime = 0;
+  unsigned long interruptiontime = millis();
+  //si la interrupcion dura menos de 200ms entonces es un rebote (ignorar)
+  if (interruptiontime - lastintetime > 200)
+  {
+
+    PWM_on();
+    state = BACKF;
   }
   lastintetime = interruptiontime;
 }
@@ -263,11 +271,9 @@ void setup()
   Serial.begin(115200);
   Wire.begin();
 
-  /*
   initLCD();
-  
-  hx711.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
-  */
+
+  //hx711.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
 
   Serial.println("Start");
 
@@ -300,6 +306,7 @@ void setup()
 
   //----------- CONFIGURACION PINES DE ENTRADA BTNS
   //DDRE &= ~((1 << DDE5) | (1 << DDE4)); // PINES BOTONES BACK
+  DDRE &= ~((1 << DDE4));               // (1 << DDE5) | PINES BOTONES BACK
   DDRD &= ~((1 << DDD2) | (1 << DDD3)); // PINES BOTONERAS CONECTADAS EN PARALELO
   DDRJ &= ~((1 << DDJ0));               //ENTRADA BTN LINE PCINT9
 
@@ -307,10 +314,10 @@ void setup()
   EICRA &= ~((1 << ISC20) | (1 << ISC30));
   EICRA |= (1 << ISC21) | (1 << ISC31); // FLANCO DE BAJADA INT2(FRONT ATRAS) E INT3 (FRONT ADELANTE)
 
-  //EICRB &= ~((1 << ISC40) | (1 << ISC50));
-  //EICRB |= ((1 << ISC41) | (1 << ISC51)); // FLANCO DE BAJADA INT4(BACK ATRAS) E INT5(BACK ADELANTE)
+  EICRB &= ~((1 << ISC40)); //| (1 << ISC50)
+  EICRB |= ((1 << ISC41));  //| (1 << ISC51) FLANCO DE BAJADA INT4(BACK ATRAS) E INT5(BACK ADELANTE)
 
-  EIMSK |= ((1 << INT2) | (1 << INT3)); // ACTIVAR INTERRUPCION | (1 << INT4) | (1 << INT5)
+  EIMSK |= ((1 << INT2) | (1 << INT3) | (1 << INT4)); // ACTIVAR INTERRUPCION | (1 << INT4) | (1 << INT5)
 
   //---------------------- CONFIGUACION INTERRUPCION BTNLINE -------------------
   PCICR |= (1 << PCIE2);    //ACTIVAR INTERRUPCION PCINT15:8 INTERES(PCINT9)
@@ -380,22 +387,9 @@ void loop()
 
 void initLCD()
 {
-  while (lcd.begin(COLUMS, ROWS) != 1) //colums - 20, rows - 4
-  {
-    Serial.println(F("PCF8574 is not connected or lcd pins declaration is wrong. Only pins numbers: 4,5,6,16,11,12,13,14 are legal."));
-    delay(2000);
-  }
-  lcd.print(F("PCF8574 is OK...")); //(F()) saves string to flash & keeps dynamic memory free
-  delay(500);
-
-  lcd.clear();
-
-  /* prints static text */
-  lcd.setCursor(0, 1); //set 1-st colum & 2-nd row, 1-st colum & row started at zero
-  lcd.print(F("Hello world!"));
-
-  // print dynamic text
-  lcd.write(LCD_SPACE_SYMBOL);
+  lcd.init();
+  lcd.backlight();
+  lcd.print("Hello World!");
 }
 
 void motor_CW()
