@@ -116,7 +116,7 @@ LiquidCrystal_I2C_Hangul lcd(0x27, 20, 4); //LCD 클래스 초기화
 
 uint8_t state = 0;
 
-uint8_t linestatus = 1; //1 -> negro 0->blanco
+boolean linestatus = true; //true->negra | false->blanca
 
 boolean chargeFlag = false;
 
@@ -125,10 +125,10 @@ uint16_t fadeValue;
 int velPwm;
 
 // ------------------- Sensores de linea
-volatile uint16_t lineSenBack[6];
-volatile uint16_t lineSenLatIzq[2];
-volatile uint16_t lineSenLatDer[2];
-volatile uint16_t lineSenFront[6];
+volatile byte lineSenBack[6];
+volatile byte lineSenLatIzq[2];
+volatile byte lineSenLatDer[2];
+volatile byte lineSenFront[6];
 
 // ------------------- Sensores ultrasonicos
 volatile float distUltra[6];
@@ -249,15 +249,15 @@ ISR(PCINT2_vect)
   //si la interrupcion dura menos de 200ms entonces es un rebote (ignorar)
   if (interruptiontime - lastintetime > 200)
   {
-    if (linestatus == 1) // si es negro
+    if (linestatus) // si es negro
     {
-      linestatus = 0; // blanco
+      linestatus = false; // blanco
       Serial.println("------------ PCINT");
       Serial.println(linestatus);
     }
     else
     {
-      linestatus = 1; // blanco
+      linestatus = true; // blanco
       Serial.println("------------ PCINT");
       Serial.println(linestatus);
     }
@@ -468,8 +468,8 @@ void motor_stop()
     //analogWrite(LENDER, velPwm);
     //analogWrite(RENIZQ, velPwm);
     //analogWrite(LENIZQ, velPwm);
-    //setDutyPWMIZQ(velPwm);
-    //setDutyPWMDER(velPwm);
+    setDutyPWMIZQ(velPwm);
+    setDutyPWMDER(velPwm);
     if (velPwm > 100)
     {
       delay(3);
@@ -479,11 +479,15 @@ void motor_stop()
       delay(80);
     }
   }
+  else
+  {
+    setDutyPWMIZQ(0); //STOP
+    setDutyPWMDER(0);
+  }
 
   //analogWrite(ENDER, 0);
-  //analogWrite(ENIZQ, 0);
-  setDutyPWMIZQ(0); //STOP
-  setDutyPWMDER(0);
+  //setDutyPWMIZQ(0); //STOP
+  //setDutyPWMDER(0);
   //analogWrite(RENDER, 0);
   //analogWrite(LENDER, 0);
   //analogWrite(RENIZQ, 0);
@@ -493,78 +497,78 @@ void motor_stop()
 }
 
 /*
-  @brief Leer mux para sensoresde linea
+  @brief Leer sensores de linea
 */
 void readSensLinea()
 {
-  //PORTA = (((i & 0x01) > 0 ? 1 : 0) << S0D) | (((i & 0x02) > 0 ? 1 : 0) << S1D) | (((i & 0x04) > 0 ? 1 : 0) << S2D) | (((i & 0x08) > 0 ? 1 : 0) << S3D);
+  // FRONT
+  lineSenFront[0] = ((PINJ & (1 << PINJ1)) > 0 ? 1 : 0); // f0
+  lineSenFront[1] = ((PINJ & (1 << PINJ0)) > 0 ? 1 : 0); // f1
+  lineSenFront[2] = ((PINH & (1 << PINH1)) > 0 ? 1 : 0); // f2
+  lineSenFront[3] = ((PINH & (1 << PINH0)) > 0 ? 1 : 0); // f3
+  lineSenFront[4] = ((PINL & (1 << PINL1)) > 0 ? 1 : 0); // f4
+  lineSenFront[5] = ((PINL & (1 << PINL0)) > 0 ? 1 : 0); // f5
 
   /*
-    Serial.print((i & 0x01) > 0 ? 1 : 0);
-    Serial.print("----");
-    Serial.print((i & 0x02) > 0 ? 1 : 0);
-    Serial.print("----");
-    Serial.print((i & 0x04) > 0 ? 1 : 0);
-    Serial.print("----");
-    Serial.print((i & 0x08) > 0 ? 1 : 0);
-    Serial.println("");
-    */
-  /*digitalWrite(S0, i & 0x01);
-    digitalWrite(S1, i & 0x02);
-    digitalWrite(S2, i & 0x04);
-    digitalWrite(S3, i & 0x08);*/
-  // FRONT
-
-  lineSenFront[0] = PINJ & (1 << PINJ1);
-  lineSenFront[1] = PINJ & (1 << PINJ0);
-  lineSenFront[2] = PINH & (1 << PINH1);
-  lineSenFront[3] = PINH & (1 << PINH0);
-  lineSenFront[4] = PINL & (1 << PINL1);
-  lineSenFront[5] = PINL & (1 << PINL0);
+    Serial.println((PINJ & (1 << PINJ1)) > 0 ? 1 : 0);
+    Serial.println((PINJ & (1 << PINJ0)) > 0 ? 1 : 0);
+    Serial.println((PINH & (1 << PINH1)) > 0 ? 1 : 0);
+    Serial.println((PINH & (1 << PINH0)) > 0 ? 1 : 0);
+    Serial.println((PINL & (1 << PINL1)) > 0 ? 1 : 0);
+    Serial.println((PINL & (1 << PINL0)) > 0 ? 1 : 0);
+  */
 
   for (size_t i = 0; i < 6; i++)
   {
+    //Serial.print("f");
+    //Serial.print(i);
+    //Serial.print("--");
     Serial.print(lineSenFront[i]);
     Serial.print("--");
   }
 
-  lineSenLatDer[0] = PINA & (1 << PINA0);
-  lineSenLatDer[1] = PINA & (1 << PINA1);
+  lineSenLatDer[0] = (PINA & (1 << PINA0)) > 0 ? 1 : 0;
+  lineSenLatDer[1] = (PINA & (1 << PINA1)) > 0 ? 1 : 0;
 
-  for (size_t i = 0; i < 2; i++)
-  {
-    Serial.print(lineSenLatDer[i]);
-    Serial.print("--");
-  }
+  /*
+    for (size_t i = 0; i < 2; i++)
+    {
+      Serial.print("f");
+      Serial.print(i);
+      Serial.print("--");
+      Serial.print(lineSenLatDer[i]);
+    }
+  */
+  lineSenBack[0] = (PINA & (1 << PINA2)) > 0 ? 1 : 0;
+  lineSenBack[1] = (PINA & (1 << PINA3)) > 0 ? 1 : 0;
+  lineSenBack[2] = (PINA & (1 << PINA4)) > 0 ? 1 : 0;
+  lineSenBack[3] = (PINA & (1 << PINA5)) > 0 ? 1 : 0;
+  lineSenBack[4] = (PINA & (1 << PINA6)) > 0 ? 1 : 0;
+  lineSenBack[5] = (PINA & (1 << PINA7)) > 0 ? 1 : 0;
 
-  lineSenBack[0] = PINA & (1 << PINA2);
-  lineSenBack[1] = PINA & (1 << PINA3);
-  lineSenBack[2] = PINA & (1 << PINA4);
-  lineSenBack[3] = PINA & (1 << PINA5);
-  lineSenBack[4] = PINA & (1 << PINA6);
-  lineSenBack[5] = PINA & (1 << PINA7);
   for (size_t i = 0; i < 6; i++)
   {
+    //Serial.print("f");
+    //Serial.print(i);
+    //Serial.print("--");
     Serial.print(lineSenBack[i]);
     Serial.print("--");
   }
 
-  lineSenLatIzq[0] = PINL & (1 << PINL3);
-  lineSenLatIzq[1] = PINL & (1 << PINL2);
+  lineSenLatIzq[0] = (PINL & (1 << PINL3)) > 0 ? 1 : 0;
+  lineSenLatIzq[1] = (PINL & (1 << PINL2)) > 0 ? 1 : 0;
 
   for (size_t i = 0; i < 2; i++)
   {
+    //Serial.print("f");
+    //Serial.print(i);
     Serial.print(lineSenLatIzq[i]);
     Serial.print("--");
   }
-
-  Serial.println("");
 }
 
 /*
-  @brief Leer mux para sensoresde linea
-  @param diection TRUE es para seleccionar 
-         barra delantera FALSE para seleccionar barra trasera
+  @brief Calcular posicion en base a las lecturas de sensores
 */
 int calcPosicion()
 {
@@ -576,6 +580,7 @@ int calcPosicion()
     sumap += state == BACKF ? lineSenFront[i] * (i + 1) * factor : lineSenBack[i] * (i + 1) * factor;
     suma += state == BACKF ? lineSenFront[i] : lineSenBack[i];
   }
+
   pos = (sumap / suma);
 
   if (lastpos <= 100 && pos == -1)
