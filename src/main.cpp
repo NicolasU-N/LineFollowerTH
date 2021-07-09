@@ -51,8 +51,8 @@ Physical Pin      Arduino Pin    Port Pin     Function
 #include <HX711.h>
 
 // ------------- HX711
-#define LOADCELL_DOUT_PIN 2
-#define LOADCELL_SCK_PIN 3
+#define LOADCELL_DOUT_PIN 52
+#define LOADCELL_SCK_PIN 50
 
 // ------------- LCD ------------------
 LiquidCrystal_I2C_Hangul lcd(0x27, 20, 4); //LCD 클래스 초기화
@@ -145,9 +145,9 @@ float KP = 0.25;  //constante proporcional 0.25
 float KD = 8.5;   //constante derivativa
 float KI = 0.001; //constante integral
 
-int vel = 50;       //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
+int vel = 150;      //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
 int velrecta = 255; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
-int velcurva = 40;  //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
+int velcurva = 150; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
 // --------------------------------------
 
 // -------------------------------------- SENSORES
@@ -183,86 +183,92 @@ void readDisIrSen();
 void readSensLinea();
 void initLCD();
 
+void PID();
+int calcPosicion();
+
 ISR(INT2_vect) //
 {
-  static unsigned long lastintetime = 0;
-  unsigned long interruptiontime = millis();
+  //static unsigned long lastintetime = 0;
+  //unsigned long interruptiontime = millis();
   //si la interrupcion dura menos de 200ms entonces es un rebote (ignorar)
-  if (interruptiontime - lastintetime > 200)
+  //if (interruptiontime - lastintetime > 500)
+  //{
+  // ----------------- DO
+  if (chargeFlag) //Si necesita carga entonces
   {
-    // ----------------- DO
-    if (chargeFlag) //Si necesita carga entonces
-    {
-      PWM_on();
-      state = CHARGE; // Estado es CHARGE
-    }
-    else
-    {
-      PWM_on();
-      state = BACKB;
-    }
+    chargeFlag = false; // Estado es STOP restablecemos carga
+    PWM_off();
+    state = STOP;
   }
-  lastintetime = interruptiontime;
+  else
+  {
+    PWM_on();
+    state = STOP;
+  }
+  //}
+  //lastintetime = interruptiontime;
 }
 
 ISR(INT3_vect)
 {
-  static unsigned long lastintetime = 0;
-  unsigned long interruptiontime = millis();
+
+  //static unsigned long lastintetime = 0;
+  //unsigned long interruptiontime = millis();
   //si la interrupcion dura menos de 200ms entonces es un rebote (ignorar)
-  if (interruptiontime - lastintetime > 200)
+  //if (interruptiontime - lastintetime > 500)
+  //{
+  // ----------------- DO
+  if (chargeFlag) //Si necesita carga entonces
   {
-    // ----------------- DO
-    if (chargeFlag) //Si necesita carga entonces
-    {
-      chargeFlag = false; // Estado es STOP restablecemos carga
-      PWM_off();
-      state = STOP;
-    }
-    else
-    {
-      PWM_on();
-      state = STOP;
-    }
+    PWM_on();
+    state = CHARGE; // Estado es CHARGE
   }
-  lastintetime = interruptiontime;
+  else
+  {
+    PWM_on();
+    state = BACKB;
+  }
+  //}
+  //Lastintetime = interruptiontime;
 }
 
 ISR(INT4_vect)
 {
-  static unsigned long lastintetime = 0;
-  unsigned long interruptiontime = millis();
+  //static unsigned long lastintetime = 0;
+  //unsigned long interruptiontime = millis();
   //si la interrupcion dura menos de 200ms entonces es un rebote (ignorar)
-  if (interruptiontime - lastintetime > 200)
-  {
+  //if (interruptiontime - lastintetime > 500)
+  //{
 
-    PWM_on();
-    state = BACKF;
-  }
-  lastintetime = interruptiontime;
+  PWM_on();
+  state = BACKF;
+  //}
+  //lastintetime = interruptiontime;
 }
 
 ISR(PCINT2_vect)
 {
+  /*
   static unsigned long lastintetime = 0;
   unsigned long interruptiontime = millis();
   //si la interrupcion dura menos de 200ms entonces es un rebote (ignorar)
   if (interruptiontime - lastintetime > 200)
   {
-    if (linestatus) // si es negro
-    {
-      linestatus = false; // blanco
-      Serial.println("------------ PCINT");
-      Serial.println(linestatus);
-    }
-    else
-    {
-      linestatus = true; // blanco
-      Serial.println("------------ PCINT");
-      Serial.println(linestatus);
-    }
+    */
+  if (linestatus) // si es negro
+  {
+    linestatus = false; // blanco
+    Serial.println("------------ PCINT");
+    Serial.println(linestatus);
   }
-  lastintetime = interruptiontime;
+  else
+  {
+    linestatus = true; // blanco
+    Serial.println("------------ PCINT");
+    Serial.println(linestatus);
+  }
+  //}
+  //lastintetime = interruptiontime;
 }
 
 void setup()
@@ -271,9 +277,10 @@ void setup()
   Serial.begin(115200);
   Wire.begin();
 
-  initLCD();
+  //initLCD();
 
-  //hx711.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
+  //CELDA DE CARGA
+  hx711.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
 
   Serial.println("Start");
 
@@ -321,7 +328,7 @@ void setup()
 
   //---------------------- CONFIGUACION INTERRUPCION BTNLINE -------------------
   PCICR |= (1 << PCIE2);    //ACTIVAR INTERRUPCION PCINT15:8 INTERES(PCINT9)
-  PCMSK2 |= (1 << PCINT23); // ACTIVR MASK PCINT9
+  PCMSK2 |= (1 << PCINT23); // ACTIVR MASK PCINT23
 
   //----------- PINES PULL UP ULTRASONICOS
 
@@ -338,9 +345,16 @@ void setup()
   PORTL &= ~(1 << PORTL4); // Activado
   _delay_us(500000);
 
+  //LUZ EMERGENCY
   PORTL |= (1 << PORTL5);
   _delay_us(500000);
   PORTL &= ~(1 << PORTL5); // Activado
+  _delay_us(500000);
+
+  //BUZZER
+  PORTL |= (1 << PORTL7);
+  _delay_us(500000);
+  PORTL &= ~(1 << PORTL7); // Activado
   _delay_us(500000);
 
   sei();
@@ -357,7 +371,7 @@ void loop()
     //------------DO
     //readUltrasonicSen();
     //readLoadCell();
-    readSensLinea();
+    //readSensLinea();
     //readVoltage();
 
     previousMillis1 += 1000;
@@ -366,21 +380,31 @@ void loop()
   switch (state)
   {
   case BACKF:
-    motor_CW();
+    //motor_CW();
+    readSensLinea();
+    posicion = calcPosicion();
+    //Serial.print("     | POS: ");
+    //Serial.println(posicion);
+    //Serial.println("");
+    PID();
     break;
 
   case BACKB:
-    motor_CCW();
+    //motor_CCW();
 
-    //readSensLinea();
-    //posicion = calcPosicion();
-    //PID();
+    readSensLinea();
+    posicion = calcPosicion();
+    //Serial.print("     | POS: ");
+    //Serial.print(posicion);
+    //Serial.println("");
+    PID();
     //TODO: implementar funcion para girar cuando detecta marcas
 
     break;
 
   case STOP:
     motor_stop();
+
     break;
   }
 }
@@ -472,11 +496,11 @@ void motor_stop()
     setDutyPWMDER(velPwm);
     if (velPwm > 100)
     {
-      delay(3);
+      delay(80);
     }
     else
     {
-      delay(80);
+      delay(3);
     }
   }
   else
@@ -493,7 +517,7 @@ void motor_stop()
   //analogWrite(RENIZQ, 0);
   //analogWrite(LENIZQ, 0);
 
-  //Serial.println("STOP");
+  Serial.println("STOP");
 }
 
 /*
@@ -502,12 +526,18 @@ void motor_stop()
 void readSensLinea()
 {
   // FRONT
-  lineSenFront[0] = ((PINJ & (1 << PINJ1)) > 0 ? 1 : 0); // f0
-  lineSenFront[1] = ((PINJ & (1 << PINJ0)) > 0 ? 1 : 0); // f1
-  lineSenFront[2] = ((PINH & (1 << PINH1)) > 0 ? 1 : 0); // f2
-  lineSenFront[3] = ((PINH & (1 << PINH0)) > 0 ? 1 : 0); // f3
-  lineSenFront[4] = ((PINL & (1 << PINL1)) > 0 ? 1 : 0); // f4
-  lineSenFront[5] = ((PINL & (1 << PINL0)) > 0 ? 1 : 0); // f5
+  lineSenFront[0] = ((PINJ & (1 << PINJ1)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
+                                                                                 : 1); // f0
+  lineSenFront[1] = ((PINJ & (1 << PINJ0)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
+                                                                                 : 1); // f1
+  lineSenFront[2] = ((PINH & (1 << PINH1)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
+                                                                                 : 1); // f2
+  lineSenFront[3] = ((PINH & (1 << PINH0)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
+                                                                                 : 1); // f3
+  lineSenFront[4] = ((PINL & (1 << PINL1)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
+                                                                                 : 1); // f4
+  lineSenFront[5] = ((PINL & (1 << PINL0)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
+                                                                                 : 1); // f5
 
   /*
     Serial.println((PINJ & (1 << PINJ1)) > 0 ? 1 : 0);
@@ -526,9 +556,12 @@ void readSensLinea()
     Serial.print(lineSenFront[i]);
     Serial.print("--");
   }
+  Serial.println("");
 
-  lineSenLatDer[0] = (PINA & (1 << PINA0)) > 0 ? 1 : 0;
-  lineSenLatDer[1] = (PINA & (1 << PINA1)) > 0 ? 1 : 0;
+  lineSenLatDer[0] = ((PINA & (1 << PINA0)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
+                                                                                  : 1);
+  lineSenLatDer[1] = ((PINA & (1 << PINA1)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
+                                                                                  : 1);
 
   /*
     for (size_t i = 0; i < 2; i++)
@@ -539,13 +572,20 @@ void readSensLinea()
       Serial.print(lineSenLatDer[i]);
     }
   */
-  lineSenBack[0] = (PINA & (1 << PINA2)) > 0 ? 1 : 0;
-  lineSenBack[1] = (PINA & (1 << PINA3)) > 0 ? 1 : 0;
-  lineSenBack[2] = (PINA & (1 << PINA4)) > 0 ? 1 : 0;
-  lineSenBack[3] = (PINA & (1 << PINA5)) > 0 ? 1 : 0;
-  lineSenBack[4] = (PINA & (1 << PINA6)) > 0 ? 1 : 0;
-  lineSenBack[5] = (PINA & (1 << PINA7)) > 0 ? 1 : 0;
+  lineSenBack[0] = ((PINA & (1 << PINA2)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
+                                                                                : 1);
+  lineSenBack[1] = ((PINA & (1 << PINA3)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
+                                                                                : 1);
+  lineSenBack[2] = ((PINA & (1 << PINA4)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
+                                                                                : 1);
+  lineSenBack[3] = ((PINA & (1 << PINA5)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
+                                                                                : 1);
+  lineSenBack[4] = ((PINA & (1 << PINA6)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
+                                                                                : 1);
+  lineSenBack[5] = ((PINA & (1 << PINA7)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
+                                                                                : 1);
 
+  /*
   for (size_t i = 0; i < 6; i++)
   {
     //Serial.print("f");
@@ -554,10 +594,13 @@ void readSensLinea()
     Serial.print(lineSenBack[i]);
     Serial.print("--");
   }
+*/
 
-  lineSenLatIzq[0] = (PINL & (1 << PINL3)) > 0 ? 1 : 0;
-  lineSenLatIzq[1] = (PINL & (1 << PINL2)) > 0 ? 1 : 0;
-
+  lineSenLatIzq[0] = ((PINL & (1 << PINL3)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
+                                                                                  : 1);
+  lineSenLatIzq[1] = ((PINL & (1 << PINL2)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
+                                                                                  : 1);
+  /*
   for (size_t i = 0; i < 2; i++)
   {
     //Serial.print("f");
@@ -565,6 +608,7 @@ void readSensLinea()
     Serial.print(lineSenLatIzq[i]);
     Serial.print("--");
   }
+  */
 }
 
 /*
@@ -678,7 +722,10 @@ void motores(int izq, int der)
   }
   //Escribir PWM MOT IZQ
   //izq = map(izq, 0, 255, 1, 100);
-  setDutyPWMIZQ(izq); // 0...255 TO 0...100
+
+  //setDutyPWMIZQ(izq); // 0...255 TO 0...100 ESTABA ANTES
+
+  setDutyPWMDER(izq); // 0...255 TO 0...100
 
   //Serial.print(izq);
   //Serial.print("\t");
@@ -718,11 +765,21 @@ void motores(int izq, int der)
     }
 
     der = abs(der); // convert to positive value
+    //Serial.println("                        DER: ");
+    //Serial.println(der);
   }
   //Escribir PWM MOT DER
   //der = map(der, 0, 255, 1, 100);
-  setDutyPWMDER(der); // 0...255 TO 0...100
-  //Serial.println(der);
+
+  //setDutyPWMDER(der); // 0...255 TO 0...100 ESTABA ANTES
+
+  setDutyPWMIZQ(der); // 0...255 TO 0...100
+
+  Serial.print(izq);
+  Serial.print("     |     ");
+  Serial.print(der);
+
+  Serial.println("");
 }
 
 /*
