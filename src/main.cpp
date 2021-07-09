@@ -47,7 +47,7 @@ Physical Pin      Arduino Pin    Port Pin     Function
 #include <ADC.h>
 #include <PWM.h>
 #include <Wire.h>
-#include <LiquidCrystal_I2C_Hangul.h>
+#include <LiquidCrystal_I2C.h>
 #include <HX711.h>
 
 // ------------- HX711
@@ -55,14 +55,9 @@ Physical Pin      Arduino Pin    Port Pin     Function
 #define LOADCELL_SCK_PIN 50
 
 // ------------- LCD ------------------
-LiquidCrystal_I2C_Hangul lcd(0x27, 20, 4); //LCD 클래스 초기화
-// ------------------------------------
+LiquidCrystal_I2C lcd(0x27, 20, 4); // set the LCD address to 0x27 for a 16 chars and 2 line display
 
-//#define S0D PORTA0 //22  // OUTPUT
-//#define S1D PORTA1 //23  // OUTPUT
-//#define S3D PORTA2 //24  // OUTPUT
-//#define S2D PORTA3 //25  // OUTPUT
-//#define SIGD 1     //A0 // INPUT CANAL 0
+// ------------------------------------
 
 #define BATTLEVEL 4 //A4 // INPUT CANAL 1
 #define MOTLEVEL 5  //A5 // INPUT CANAL 1
@@ -141,13 +136,16 @@ HX711 hx711;
 long loadcellvalue;
 
 // -------------------------------------- PID
-float KP = 0.25;  //constante proporcional 0.25
+float KP = 0.6;   //constante proporcional 0.25
 float KD = 8.5;   //constante derivativa
 float KI = 0.001; //constante integral
 
-int vel = 150;      //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
-int velrecta = 255; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
-int velcurva = 150; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
+int vel = 170; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
+//int velrecta = 255; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
+//int velcurva = 150; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
+
+int veladelante = 220; //VELOCIDAD DEL FRENO DIRECCIÓN ADELANTE
+int velatras = 200;    //VELOCIDAD DEL FRENO DIRECCIÓN ATRÁS
 // --------------------------------------
 
 // -------------------------------------- SENSORES
@@ -181,7 +179,7 @@ void readLoadCell();
 void readUltrasonicSen();
 void readDisIrSen();
 void readSensLinea();
-void initLCD();
+void initLCDi();
 
 void PID();
 int calcPosicion();
@@ -225,6 +223,7 @@ ISR(INT3_vect)
   }
   else
   {
+    Serial.println("#######################################------------------------ BACKB");
     PWM_on();
     state = BACKB;
   }
@@ -239,7 +238,7 @@ ISR(INT4_vect)
   //si la interrupcion dura menos de 200ms entonces es un rebote (ignorar)
   //if (interruptiontime - lastintetime > 500)
   //{
-
+  Serial.println("--------------------------------------------------------- BACKF");
   PWM_on();
   state = BACKF;
   //}
@@ -273,14 +272,13 @@ ISR(PCINT2_vect)
 
 void setup()
 {
-  cli();
-  Serial.begin(115200);
-  Wire.begin();
-
-  //initLCD();
+  initLCDi();
 
   //CELDA DE CARGA
-  hx711.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
+  //hx711.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
+
+  cli();
+  Serial.begin(115200);
 
   Serial.println("Start");
 
@@ -294,7 +292,6 @@ void setup()
   //-----------ENTRADA SENSORES DE LINEA
   DDRJ &= ~((1 << DDJ1) | (1 << DDJ0));
   DDRH &= ~((1 << DDH1) | (1 << DDH0));
-  //DDRD &= ~((1 << DDD2) | (1 << DDD3)); // no se pueden usar por botoneras
 
   DDRA &= ~(0xFF); // INPUTS SENSORES DE LINEA
 
@@ -338,32 +335,41 @@ void setup()
   PORTC |= (1 << PORTC6) | (1 << PORTC4) | (1 << PORTC2) | (1 << PORTC0);
   PORTG |= (1 << PORTG2) | (1 << PORTG0);
 
+  sei();
+
   //----------- ESTADO INICIAL
   // COMUN RELE
   PORTL |= (1 << PORTL4);
-  _delay_us(500000);
+  _delay_ms(500);
   PORTL &= ~(1 << PORTL4); // Activado
-  _delay_us(500000);
+  _delay_ms(500);
 
-  //LUZ EMERGENCY
+  //LUZ EMERGENCY BTN
   PORTL |= (1 << PORTL5);
-  _delay_us(500000);
+  _delay_ms(500);
   PORTL &= ~(1 << PORTL5); // Activado
-  _delay_us(500000);
+  _delay_ms(500);
 
-  //BUZZER
+  //BUZZER y LUZ LICUADORA
+
+  PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
+  PORTL |= (1 << PORTL7);  // ENCENDIDO PITO // Activado
+  _delay_ms(500);
   PORTL |= (1 << PORTL7);
-  _delay_us(500000);
-  PORTL &= ~(1 << PORTL7); // Activado
-  _delay_us(500000);
+  PORTL |= (1 << PORTL6);
+  _delay_ms(500);
+  //LUZ LICUADORA
+  //PORTL |= (1 << PORTL6);
+  //_delay_ms(500);
+  //PORTL &= ~(1 << PORTL6); // Activado
+  //_delay_ms(500);
 
-  sei();
+  //TERMINAR SECUENCIA
+  PORTL |= (1 << PORTL5); // VERDE BTN EMERGENCY
 }
 
 void loop()
 {
-  //readLineSensor();
-  //changeState(); // Change state
 
   static unsigned long previousMillis1 = 0;
   if ((millis() - previousMillis1) > 1000)
@@ -374,46 +380,114 @@ void loop()
     //readSensLinea();
     //readVoltage();
 
+    //readDisIrSen();
+
     previousMillis1 += 1000;
+  }
+
+  static unsigned long previousMillis3 = 0;
+  if ((millis() - previousMillis3) > 400)
+  {
+    // ------------------------------- FUNCTION STOP
+    if (lineSenFront[0] == 1 and lineSenFront[1] == 1 and lineSenFront[2] == 1 and lineSenFront[3] == 1 and lineSenFront[4] == 1 and lineSenFront[5] == 1)
+    {
+      state = STOP;
+    }
+
+    previousMillis3 += 400;
   }
 
   switch (state)
   {
   case BACKF:
     //motor_CW();
-    readSensLinea();
-    posicion = calcPosicion();
-    //Serial.print("     | POS: ");
-    //Serial.println(posicion);
-    //Serial.println("");
-    PID();
+
+    if (disIrSenValue[0] > 130 || disIrSenValue[1] > 130)
+    {
+      motor_stop();
+    }
+    else
+    {
+      readSensLinea();
+      posicion = calcPosicion();
+
+      Serial.print("     | POS: ");
+      Serial.println(posicion);
+      Serial.println("");
+
+      if (posicion <= 150)
+      {
+        motores(-velatras, veladelante);
+      }
+      else if (posicion >= 550)
+      {
+        motores(veladelante, -velatras);
+      }
+      else
+      {
+        PID();
+      }
+    }
+
     break;
 
   case BACKB:
     //motor_CCW();
 
-    readSensLinea();
-    posicion = calcPosicion();
-    //Serial.print("     | POS: ");
-    //Serial.print(posicion);
-    //Serial.println("");
-    PID();
-    //TODO: implementar funcion para girar cuando detecta marcas
+    //disIrSenValue[0]; // Adelante
+    //disIrSenValue[1]; // Aatras
 
+    if (disIrSenValue[0] > 130 || disIrSenValue[1] > 130)
+    {
+      motor_stop();
+    }
+    else
+    {
+      readSensLinea();
+      posicion = calcPosicion();
+
+      Serial.print("     | POS: ");
+      Serial.print(posicion);
+      Serial.println("");
+
+      if (posicion <= 150)
+      {
+        motores(-velatras, veladelante);
+      }
+      else if (posicion >= 550)
+      {
+        motores(veladelante, -velatras);
+      }
+      else
+      {
+        PID();
+      }
+      //PID();
+    }
+
+    //TODO: implementar funcion para girar cuando detecta marcas
     break;
 
   case STOP:
     motor_stop();
-
     break;
   }
 }
 
-void initLCD()
+void initLCDi()
 {
+  lcd.init(); // initialize the lcd
   lcd.init();
+  // Print a message to the LCD.
   lcd.backlight();
-  lcd.print("Hello World!");
+  lcd.setCursor(7, 0);
+  lcd.print("BAKER");
+  lcd.setCursor(2, 1);
+  lcd.print("Todohidraulicos");
+  lcd.setCursor(4, 2);
+  lcd.print("TH-AutoKart");
+  lcd.setCursor(5, 3);
+  lcd.print("SMART CART");
 }
 
 void motor_CW()
@@ -496,7 +570,7 @@ void motor_stop()
     setDutyPWMDER(velPwm);
     if (velPwm > 100)
     {
-      delay(80);
+      delay(100);
     }
     else
     {
@@ -547,16 +621,18 @@ void readSensLinea()
     Serial.println((PINL & (1 << PINL1)) > 0 ? 1 : 0);
     Serial.println((PINL & (1 << PINL0)) > 0 ? 1 : 0);
   */
-
-  for (size_t i = 0; i < 6; i++)
+  if (state == BACKF)
   {
-    //Serial.print("f");
-    //Serial.print(i);
-    //Serial.print("--");
-    Serial.print(lineSenFront[i]);
-    Serial.print("--");
+    for (size_t i = 0; i < 6; i++)
+    {
+      //Serial.print("f");
+      //Serial.print(i);
+      //Serial.print("--");
+
+      Serial.print(lineSenFront[i]);
+      Serial.print("--");
+    }
   }
-  Serial.println("");
 
   lineSenLatDer[0] = ((PINA & (1 << PINA0)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
                                                                                   : 1);
@@ -585,16 +661,17 @@ void readSensLinea()
   lineSenBack[5] = ((PINA & (1 << PINA7)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
                                                                                 : 1);
 
-  /*
-  for (size_t i = 0; i < 6; i++)
+  if (state == BACKB)
   {
-    //Serial.print("f");
-    //Serial.print(i);
-    //Serial.print("--");
-    Serial.print(lineSenBack[i]);
-    Serial.print("--");
+    for (size_t i = 0; i < 6; i++)
+    {
+      //Serial.print("f");
+      //Serial.print(i);
+      //Serial.print("--");
+      Serial.print(lineSenBack[i]);
+      Serial.print("--");
+    }
   }
-*/
 
   lineSenLatIzq[0] = ((PINL & (1 << PINL3)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
                                                                                   : 1);
@@ -609,6 +686,7 @@ void readSensLinea()
     Serial.print("--");
   }
   */
+  Serial.println("");
 }
 
 /*
@@ -629,11 +707,11 @@ int calcPosicion()
 
   if (lastpos <= 100 && pos == -1)
   {
-    pos = 0;
+    pos = 0; // Sale por izquierda
   }
   else if (lastpos >= 500 && pos == -1)
   {
-    pos = 600;
+    pos = 600; // Sale por derecha
   }
   lastpos = pos;
   return pos;
@@ -774,12 +852,13 @@ void motores(int izq, int der)
   //setDutyPWMDER(der); // 0...255 TO 0...100 ESTABA ANTES
 
   setDutyPWMIZQ(der); // 0...255 TO 0...100
-
+  /*
   Serial.print(izq);
   Serial.print("     |     ");
   Serial.print(der);
 
   Serial.println("");
+  */
 }
 
 /*
@@ -833,10 +912,13 @@ void readDisIrSen()
 {
   disIrSenValue[0] = ADCGetData(IRDISF); // leer dis front
   disIrSenValue[1] = ADCGetData(IRDISB); // leer dis back
+  /*
   Serial.print("----> DIS IR: ");
   Serial.print(disIrSenValue[0]);
   Serial.print("---");
   Serial.print(disIrSenValue[1]);
+  Serial.println("");
+  */
 }
 
 void readUltrasonicSen()
