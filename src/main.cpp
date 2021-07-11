@@ -59,12 +59,12 @@ LiquidCrystal_I2C lcd(0x27, 20, 4); // set the LCD address to 0x27 for a 16 char
 
 // ------------------------------------
 
-#define BATTLEVEL 4 //A4 // INPUT CANAL 1
-#define MOTLEVEL 5  //A5 // INPUT CANAL 1
+#define BATTLEVEL A4 // INPUT CANAL 1
+#define MOTLEVEL A13 // INPUT CANAL 13
 
 //Pines Sensor distancia infrarojo
-#define IRDISF 2 //Input Analog CANAL 2
-#define IRDISB 3 //Input Analog CANAL 3
+#define IRDISF A2 //Input Analog CANAL 2
+#define IRDISB A3 //Input Analog CANAL 3
 
 // Pines direccion puente h
 #define ENIZQ 9        // 9 PORTH6
@@ -82,7 +82,9 @@ LiquidCrystal_I2C lcd(0x27, 20, 4); // set the LCD address to 0x27 for a 16 char
 
 #define BTNFRONTF 18 // PORTD3 Input
 #define BTNFRONTB 19 // PORTD2 Input
-#define BTNLINE PK7  //PK7 // PJ0 Input
+#define BTNSTOP 19   // PORTD2 Input
+
+#define BTNLINE PK7 //PK7 // PJ0 Input
 
 #define TRIG1BACKDER PORTC7 //30
 #define ECHO1BACKDER 31     //PC6 Ultrasonic sensor 1
@@ -136,16 +138,16 @@ HX711 hx711;
 long loadcellvalue;
 
 // -------------------------------------- PID
-float KP = 0.6;   //constante proporcional 0.25
+float KP = 0.82;  //constante proporcional 0.25
 float KD = 8.5;   //constante derivativa
 float KI = 0.001; //constante integral
 
-int vel = 170; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
+int vel = 180; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
 //int velrecta = 255; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
 //int velcurva = 150; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
 
-int veladelante = 220; //VELOCIDAD DEL FRENO DIRECCIÓN ADELANTE
-int velatras = 200;    //VELOCIDAD DEL FRENO DIRECCIÓN ATRÁS
+int veladelante = 245; //VELOCIDAD DEL FRENO DIRECCIÓN ADELANTE
+int velatras = 240;    //VELOCIDAD DEL FRENO DIRECCIÓN ATRÁS
 // --------------------------------------
 
 // -------------------------------------- SENSORES
@@ -163,6 +165,8 @@ int diferencial = 0;
 int last_prop;
 int setpoint = 350; // Mitad de sensores
 
+boolean flagFuncArranque = true; // TRUE cuando no corre el arranque FALSE cuando ya lo corre
+
 // datos para la integral
 int errors[6];
 
@@ -174,6 +178,7 @@ void motor_stop();
 void motor_CW();
 void motor_CCW();
 
+void readVoltEmergency();
 void readVoltage();
 void readLoadCell();
 void readUltrasonicSen();
@@ -186,12 +191,14 @@ int calcPosicion();
 
 ISR(INT2_vect) //
 {
-  //static unsigned long lastintetime = 0;
-  //unsigned long interruptiontime = millis();
+  static unsigned long lastintetime = 0;
+  unsigned long interruptiontime = millis();
   //si la interrupcion dura menos de 200ms entonces es un rebote (ignorar)
-  //if (interruptiontime - lastintetime > 500)
-  //{
-  // ----------------- DO
+  if (interruptiontime - lastintetime > 200)
+  {
+    // ----------------- DO
+
+    /*
   if (chargeFlag) //Si necesita carga entonces
   {
     chargeFlag = false; // Estado es STOP restablecemos carga
@@ -200,22 +207,33 @@ ISR(INT2_vect) //
   }
   else
   {
-    PWM_on();
-    state = STOP;
   }
-  //}
-  //lastintetime = interruptiontime;
+  */
+    Serial.println("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$------------------------ STOPPPPPPPPP");
+
+    PWM_off();
+    state = STOP;
+
+    //APAGAR LUZ SIRENA
+    //PORTL |= (1 << PORTL6);
+    //_delay_ms(10);
+    //PORTL &= ~(1 << PORTL7); // PITO OFF
+    //_delay_ms(10);
+  }
+  lastintetime = interruptiontime;
 }
 
 ISR(INT3_vect)
 {
 
-  //static unsigned long lastintetime = 0;
-  //unsigned long interruptiontime = millis();
+  static unsigned long lastintetime1 = 0;
+  unsigned long interruptiontime1 = millis();
   //si la interrupcion dura menos de 200ms entonces es un rebote (ignorar)
-  //if (interruptiontime - lastintetime > 500)
-  //{
-  // ----------------- DO
+  if (interruptiontime1 - lastintetime1 > 200)
+  {
+    // ----------------- DO
+
+    /*
   if (chargeFlag) //Si necesita carga entonces
   {
     PWM_on();
@@ -223,37 +241,45 @@ ISR(INT3_vect)
   }
   else
   {
-    Serial.println("#######################################------------------------ BACKB");
+  }
+*/
+    Serial.println("#######################################------------------------ BACKBBBBBBB");
+
     PWM_on();
     state = BACKB;
   }
-  //}
-  //Lastintetime = interruptiontime;
+  lastintetime1 = interruptiontime1;
 }
 
 ISR(INT4_vect)
 {
-  //static unsigned long lastintetime = 0;
-  //unsigned long interruptiontime = millis();
-  //si la interrupcion dura menos de 200ms entonces es un rebote (ignorar)
-  //if (interruptiontime - lastintetime > 500)
-  //{
-  Serial.println("--------------------------------------------------------- BACKF");
-  PWM_on();
-  state = BACKF;
-  //}
-  //lastintetime = interruptiontime;
-}
-
-ISR(PCINT2_vect)
-{
-  /*
   static unsigned long lastintetime = 0;
   unsigned long interruptiontime = millis();
   //si la interrupcion dura menos de 200ms entonces es un rebote (ignorar)
   if (interruptiontime - lastintetime > 200)
   {
-    */
+
+    Serial.println("--------------------------------------------------------- BACKFFFFFF");
+
+    PWM_on();
+    state = BACKF;
+
+    //ENCENCER LUZ SIRENA
+    //PORTL &= ~(1 << PORTL6);
+    //PORTL &= ~(1 << PORTL7); // PITO OFF
+  }
+  lastintetime = interruptiontime;
+}
+
+ISR(PCINT2_vect)
+{
+
+  //static unsigned long lastintetime = 0;
+  //unsigned long interruptiontime = millis();
+  //si la interrupcion dura menos de 200ms entonces es un rebote (ignorar)
+  //if (interruptiontime - lastintetime > 200)
+  //{
+
   if (linestatus) // si es negro
   {
     linestatus = false; // blanco
@@ -283,7 +309,7 @@ void setup()
   Serial.println("Start");
 
   //CONFIGURAR ADC
-  ADCInit();
+  //ADCInit(); NO TIENE FILTRO, se usa funcion nativa del frame work
 
   //CONFIGURAR PWM
   PWM_init();
@@ -315,11 +341,11 @@ void setup()
   DDRJ &= ~((1 << DDJ0));               //ENTRADA BTN LINE PCINT9
 
   //---------------------- CONFIGUACION INTERRUPCIONES BOTONERAS -------------------
-  EICRA &= ~((1 << ISC20) | (1 << ISC30));
-  EICRA |= (1 << ISC21) | (1 << ISC31); // FLANCO DE BAJADA INT2(FRONT ATRAS) E INT3 (FRONT ADELANTE)
+  EICRA &= ~((1 << ISC20) | (1 << ISC30)); // CAMBIAR OPERADOR |= POR &= ~ para flanco de bajada
+  EICRA |= (1 << ISC21) | (1 << ISC31);    // FLANCO DE SUBIDA INT2(FRONT ATRAS) E INT3 (FRONT ADELANTE)
 
-  EICRB &= ~((1 << ISC40)); //| (1 << ISC50)
-  EICRB |= ((1 << ISC41));  //| (1 << ISC51) FLANCO DE BAJADA INT4(BACK ATRAS) E INT5(BACK ADELANTE)
+  EICRB &= ~((1 << ISC40)); //  CAMBIAR OPERADOR |= POR &= ~ para flanco de bajada                       | (1 << ISC50)
+  EICRB |= ((1 << ISC41));  //       | (1 << ISC51) FLANCO DE SUBIDA INT4(BACK ATRAS) E INT5(BACK ADELANTE)
 
   EIMSK |= ((1 << INT2) | (1 << INT3) | (1 << INT4)); // ACTIVAR INTERRUPCION | (1 << INT4) | (1 << INT5)
 
@@ -335,37 +361,32 @@ void setup()
   PORTC |= (1 << PORTC6) | (1 << PORTC4) | (1 << PORTC2) | (1 << PORTC0);
   PORTG |= (1 << PORTG2) | (1 << PORTG0);
 
-  sei();
-
   //----------- ESTADO INICIAL
   // COMUN RELE
   PORTL |= (1 << PORTL4);
-  _delay_ms(500);
+  _delay_ms(400);
   PORTL &= ~(1 << PORTL4); // Activado
-  _delay_ms(500);
+  _delay_ms(400);
 
   //LUZ EMERGENCY BTN
   PORTL |= (1 << PORTL5);
-  _delay_ms(500);
+  _delay_ms(400);
   PORTL &= ~(1 << PORTL5); // Activado
-  _delay_ms(500);
+  _delay_ms(400);
 
   //BUZZER y LUZ LICUADORA
 
   PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
   PORTL |= (1 << PORTL7);  // ENCENDIDO PITO // Activado
-  _delay_ms(500);
-  PORTL |= (1 << PORTL7);
+  _delay_ms(400);
+  PORTL &= ~(1 << PORTL7);
   PORTL |= (1 << PORTL6);
-  _delay_ms(500);
-  //LUZ LICUADORA
-  //PORTL |= (1 << PORTL6);
-  //_delay_ms(500);
-  //PORTL &= ~(1 << PORTL6); // Activado
-  //_delay_ms(500);
+  _delay_ms(400);
 
   //TERMINAR SECUENCIA
   PORTL |= (1 << PORTL5); // VERDE BTN EMERGENCY
+
+  sei();
 }
 
 void loop()
@@ -377,8 +398,6 @@ void loop()
     //------------DO
     //readUltrasonicSen();
     //readLoadCell();
-    //readSensLinea();
-    //readVoltage();
 
     //readDisIrSen();
 
@@ -388,11 +407,18 @@ void loop()
   static unsigned long previousMillis3 = 0;
   if ((millis() - previousMillis3) > 400)
   {
+
+    //-------------------------------------------------------DEBUG
+
     // ------------------------------- FUNCTION STOP
     if (lineSenFront[0] == 1 and lineSenFront[1] == 1 and lineSenFront[2] == 1 and lineSenFront[3] == 1 and lineSenFront[4] == 1 and lineSenFront[5] == 1)
     {
       state = STOP;
     }
+
+    //readVoltage(); // LEER VOLTAJE BATERIA
+
+    readVoltEmergency();
 
     previousMillis3 += 400;
   }
@@ -401,7 +427,46 @@ void loop()
   {
   case BACKF:
     //motor_CW();
+    //ESTADO CUANDO PRESIONA BOTONERA TRASERA
 
+    while (flagFuncArranque)
+    {
+      Serial.println("::::::::::::::::::::::::::: DENTRO DE WHILE");
+      //ENCENCER LUZ SIRENA
+      PORTL &= ~(1 << PORTL6);
+      PORTL &= ~(1 << PORTL7); // PITO OFF
+
+      //PUENTE H
+      PORTH &= ~(1 << PWMIZQ1); // LOW Y OTRO HIGH ES PARA ATRAS
+      PORTH |= (1 << PWMIZQ0);
+
+      PORTE |= (1 << PWMDER1);
+      PORTG &= ~(1 << PWMDER0);
+
+      if (fadeValue < 447)
+      {
+        fadeValue++; // Valor max para 252 pwm
+      }
+      else
+      { // CAMBIAR FLAG
+        flagFuncArranque = false;
+      }
+
+      velPwm = funcPwm(fadeValue);
+      //Serial.println(velPwm);
+
+      setDutyPWMIZQ(velPwm);
+      setDutyPWMDER(velPwm);
+
+      //analogWrite(RENIZQ, velPwm);
+      //analogWrite(LENIZQ, velPwm);
+      //analogWrite(ENDER, velPwm);
+      //analogWrite(ENIZQ, velPwm);
+      Serial.println("CW");
+      delay(10);
+    }
+
+    Serial.println("::::::::::::::::::::::::::: FUERA DE WHILE");
     if (disIrSenValue[0] > 130 || disIrSenValue[1] > 130)
     {
       motor_stop();
@@ -411,7 +476,7 @@ void loop()
       readSensLinea();
       posicion = calcPosicion();
 
-      Serial.print("     | POS: ");
+      Serial.print("       | POS: ");
       Serial.println(posicion);
       Serial.println("");
 
@@ -434,10 +499,48 @@ void loop()
   case BACKB:
     //motor_CCW();
 
-    //disIrSenValue[0]; // Adelante
-    //disIrSenValue[1]; // Aatras
+    //ESTADO CUANDO PRESIONA BOTONERA DELANTERA
 
-    if (disIrSenValue[0] > 130 || disIrSenValue[1] > 130)
+    while (flagFuncArranque)
+    {
+      Serial.println("::::::::::::::::::::::::::: DENTRO DE WHILE");
+      //ENCENCER LUZ SIRENA
+      PORTL &= ~(1 << PORTL6);
+      PORTL &= ~(1 << PORTL7); // PITO OFF
+
+      //PUENTE H
+      PORTH &= ~(1 << PWMIZQ0); // LOW Y OTRO HIGH ES PARA ATRAS
+      PORTH |= (1 << PWMIZQ1);
+
+      PORTE &= ~(1 << PWMDER1);
+      PORTG |= (1 << PWMDER0);
+
+      if (fadeValue < 447)
+      {
+        fadeValue++; // Valor max para 252 pwm
+      }
+      else
+      { // CAMBIAR FLAG
+        flagFuncArranque = false;
+      }
+
+      velPwm = funcPwm(fadeValue);
+      //Serial.println(velPwm);
+
+      setDutyPWMIZQ(velPwm);
+      setDutyPWMDER(velPwm);
+
+      //analogWrite(RENIZQ, velPwm);
+      //analogWrite(LENIZQ, velPwm);
+      //analogWrite(ENDER, velPwm);
+      //analogWrite(ENIZQ, velPwm);
+      Serial.println("CW");
+      delay(10);
+    }
+
+    Serial.println("::::::::::::::::::::::::::: FUERA DE WHILE");
+
+    if (disIrSenValue[0] > 130 || disIrSenValue[1] > 130) // Adelante || ATRAS
     {
       motor_stop();
     }
@@ -446,7 +549,7 @@ void loop()
       readSensLinea();
       posicion = calcPosicion();
 
-      Serial.print("     | POS: ");
+      Serial.print("       | POS: ");
       Serial.print(posicion);
       Serial.println("");
 
@@ -462,15 +565,45 @@ void loop()
       {
         PID();
       }
-      //PID();
     }
 
     //TODO: implementar funcion para girar cuando detecta marcas
+
     break;
 
   case STOP:
+    PWM_off();
     motor_stop();
+
+    // RESETEAR FLAG SECUENCIA DE ARRANQUE
+    flagFuncArranque = true;
+    fadeValue = 0;
+
+    PORTH &= ~(1 << PWMIZQ0); // LOW Y OTRO HIGH ES PARA ATRAS
+    PORTH &= ~(1 << PWMIZQ1);
+
+    PORTE &= ~(1 << PWMDER1);
+    PORTG &= ~(1 << PWMDER0);
+
+    //APAGAR LUZ SIRENA
+    PORTL |= (1 << PORTL6);
+    PORTL &= ~(1 << PORTL7); // PITO OFF
     break;
+  }
+}
+
+void readVoltEmergency()
+{
+  uint16_t motlev = analogRead(MOTLEVEL);
+
+  // ------------------------------- FUNCTION MEDIR BTN EMERGENCY
+  if (motlev > 820)
+  {
+    PORTL |= (1 << PORTL5); // EL BTN EMERGENCY SUELTO VERDE
+  }
+  else
+  {
+    PORTL &= ~(1 << PORTL5); // EL BTN PRESIONADO ROJO
   }
 }
 
@@ -545,19 +678,19 @@ void motor_CCW()
   delay(10);
 }
 
-//Function buat motor STOP
 void motor_stop()
 {
+  /*
   //---------------------- FRENO SUAVE
-  if (velPwm > 0)
+  if (vel > 0)
   {
-    if (velPwm <= 2)
+    if (vel <= 2)
     {
-      velPwm = 0;
+      vel = 0;
     }
     else
     {
-      velPwm--;
+      vel--;
     }
     //Escribir velocidad decreciente
     //Serial.print("velPwm:  ");
@@ -566,23 +699,22 @@ void motor_stop()
     //analogWrite(LENDER, velPwm);
     //analogWrite(RENIZQ, velPwm);
     //analogWrite(LENIZQ, velPwm);
-    setDutyPWMIZQ(velPwm);
-    setDutyPWMDER(velPwm);
-    if (velPwm > 100)
+    setDutyPWMIZQ(vel);
+    setDutyPWMDER(vel);
+    if (vel > 100)
     {
-      delay(100);
+      delay(3);
     }
     else
     {
-      delay(3);
+      delay(100);
     }
   }
   else
   {
-    setDutyPWMIZQ(0); //STOP
-    setDutyPWMDER(0);
+   
   }
-
+*/
   //analogWrite(ENDER, 0);
   //setDutyPWMIZQ(0); //STOP
   //setDutyPWMDER(0);
@@ -590,8 +722,9 @@ void motor_stop()
   //analogWrite(LENDER, 0);
   //analogWrite(RENIZQ, 0);
   //analogWrite(LENIZQ, 0);
-
-  Serial.println("STOP");
+  setDutyPWMIZQ(0); //STOP
+  setDutyPWMDER(0);
+  //Serial.println("STOP");
 }
 
 /*
@@ -759,6 +892,10 @@ void PID()
 */
 void motores(int izq, int der)
 {
+  Serial.print(izq);
+  Serial.print("     |     ");
+  Serial.print(der);
+  Serial.println("");
   //----------- MOT IZQ -----------
   if (izq >= 0)
   {
@@ -766,17 +903,17 @@ void motores(int izq, int der)
     //PORTD |= (1 << MOT_IZQ_ADELANTE); // MOTOR ON
     //PORTD &= ~(1 << MOT_IZQ_ATRAS);   // MOTOR OFF
 
-    //TODO : CONDICIONAL CAMBIAR DE DIRECCION EGUN EL ESTADO
-    if (state == BACKF)
+    switch (state)
     {
+    case BACKF:
       // ADELANTE MOTOR IZQ
       PORTH &= ~(1 << PWMIZQ1);
       PORTH |= (1 << PWMIZQ0);
-    }
-    else // en reversa
-    {
+      break;
+    case BACKB:
       PORTH |= (1 << PWMIZQ1);
       PORTH &= ~(1 << PWMIZQ0);
+      break;
     }
   }
   else
@@ -784,16 +921,18 @@ void motores(int izq, int der)
     //ATRAS
     //PORTD &= ~(1 << MOT_IZQ_ADELANTE); // MOTOR ON
     //PORTD |= (1 << MOT_IZQ_ATRAS);     // MOTOR OFF
-    if (state == BACKF)
+    switch (state)
     {
+    case BACKF:
       PORTH |= (1 << PWMIZQ1);
       PORTH &= ~(1 << PWMIZQ0);
-    }
-    else
-    {
+      break;
+
+    case BACKB:
       // ADELANTE MOTOR IZQ
       PORTH &= ~(1 << PWMIZQ1);
       PORTH |= (1 << PWMIZQ0);
+      break;
     }
 
     izq = abs(izq); // convert to positive value
@@ -803,10 +942,20 @@ void motores(int izq, int der)
 
   //setDutyPWMIZQ(izq); // 0...255 TO 0...100 ESTABA ANTES
 
-  setDutyPWMDER(izq); // 0...255 TO 0...100
+  // --------------------------------------------------------------------------- DEBUG
+  setDutyPWMDER(izq); // 0...255
+  /*
+  switch (state)
+  {
+  case BACKF:
+    setDutyPWMDER(izq); // 0...255
+    break;
 
-  //Serial.print(izq);
-  //Serial.print("\t");
+  case BACKB:
+    setDutyPWMIZQ(izq); // 0...255
+    break;
+  }
+  */
 
   //----------- MOT DER -----------
   if (der >= 0)
@@ -815,15 +964,16 @@ void motores(int izq, int der)
     //PORTB |= (1 << MOT_DER_ADELANTE); // MOTOR ON
     //PORTD &= ~(1 << MOT_DER_ATRAS);   // MOTOR OFF
 
-    if (state == BACKF)
+    switch (state)
     {
+    case BACKF:
       PORTE |= (1 << PWMDER1);
       PORTG &= ~(1 << PWMDER0);
-    }
-    else
-    {
+      break;
+    case BACKB:
       PORTE &= ~(1 << PWMDER1);
       PORTG |= (1 << PWMDER0);
+      break;
     }
   }
   else
@@ -831,32 +981,46 @@ void motores(int izq, int der)
     //ATRAS
     //PORTB &= ~(1 << MOT_DER_ADELANTE); // MOTOR ON
     //PORTD |= (1 << MOT_DER_ATRAS);     // MOTOR OFF
-    if (state == BACKF)
+
+    switch (state)
     {
+    case BACKF:
       PORTE &= ~(1 << PWMDER1);
       PORTG |= (1 << PWMDER0);
-    }
-    else
-    {
+      break;
+
+    case BACKB:
       PORTE |= (1 << PWMDER1);
       PORTG &= ~(1 << PWMDER0);
+      break;
     }
 
     der = abs(der); // convert to positive value
-    //Serial.println("                        DER: ");
-    //Serial.println(der);
   }
   //Escribir PWM MOT DER
   //der = map(der, 0, 255, 1, 100);
 
   //setDutyPWMDER(der); // 0...255 TO 0...100 ESTABA ANTES
 
+  // --------------------------------------------------------------------------- DEBUG
   setDutyPWMIZQ(der); // 0...255 TO 0...100
+
+  /*  
+  switch (state)
+  {
+  case BACKF:
+    setDutyPWMIZQ(der); // 0...255 TO 0...100
+    break;
+
+  case BACKB:
+    setDutyPWMDER(der); // 0...255 TO 0...100
+    break;
+  }
+  */
   /*
   Serial.print(izq);
   Serial.print("     |     ");
   Serial.print(der);
-
   Serial.println("");
   */
 }
@@ -889,7 +1053,7 @@ void readLoadCell()
 */
 void readVoltage()
 {
-  uint16_t read = ADCGetData(BATTLEVEL);
+  uint16_t read = analogRead(BATTLEVEL);
   uint16_t level = map(read, 0, 1023, 0, 4700);
 
   if (level <= 3900)
@@ -910,15 +1074,15 @@ void readVoltage()
 */
 void readDisIrSen()
 {
-  disIrSenValue[0] = ADCGetData(IRDISF); // leer dis front
-  disIrSenValue[1] = ADCGetData(IRDISB); // leer dis back
+  disIrSenValue[0] = analogRead(IRDISF); // leer dis front
+  disIrSenValue[1] = analogRead(IRDISB); // leer dis back
   /*
   Serial.print("----> DIS IR: ");
   Serial.print(disIrSenValue[0]);
   Serial.print("---");
   Serial.print(disIrSenValue[1]);
   Serial.println("");
-  */
+*/
 }
 
 void readUltrasonicSen()
