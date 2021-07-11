@@ -142,11 +142,11 @@ float KP = 0.82;  //constante proporcional 0.25
 float KD = 8.5;   //constante derivativa
 float KI = 0.001; //constante integral
 
-int vel = 180; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
+int vel = 185; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
 //int velrecta = 255; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
 //int velcurva = 150; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
 
-int veladelante = 245; //VELOCIDAD DEL FRENO DIRECCIÓN ADELANTE
+int veladelante = 250; //VELOCIDAD DEL FRENO DIRECCIÓN ADELANTE
 int velatras = 240;    //VELOCIDAD DEL FRENO DIRECCIÓN ATRÁS
 // --------------------------------------
 
@@ -213,6 +213,16 @@ ISR(INT2_vect) //
 
     PWM_off();
     state = STOP;
+
+    PORTH &= ~(1 << PWMIZQ0); // LOW Y OTRO HIGH ES PARA ATRAS
+    PORTH &= ~(1 << PWMIZQ1);
+
+    PORTE &= ~(1 << PWMDER1);
+    PORTG &= ~(1 << PWMDER0);
+
+    //APAGAR LUZ SIRENA
+    PORTL |= (1 << PORTL6);
+    PORTL &= ~(1 << PORTL7); // PITO OFF
 
     //APAGAR LUZ SIRENA
     //PORTL |= (1 << PORTL6);
@@ -429,7 +439,7 @@ void loop()
     //motor_CW();
     //ESTADO CUANDO PRESIONA BOTONERA TRASERA
 
-    while (flagFuncArranque)
+    if (flagFuncArranque)
     {
       Serial.println("::::::::::::::::::::::::::: DENTRO DE WHILE");
       //ENCENCER LUZ SIRENA
@@ -465,32 +475,36 @@ void loop()
       Serial.println("CW");
       delay(10);
     }
-
-    Serial.println("::::::::::::::::::::::::::: FUERA DE WHILE");
-    if (disIrSenValue[0] > 130 || disIrSenValue[1] > 130)
-    {
-      motor_stop();
-    }
     else
     {
-      readSensLinea();
-      posicion = calcPosicion();
 
-      Serial.print("       | POS: ");
-      Serial.println(posicion);
-      Serial.println("");
+      Serial.println("::::::::::::::::::::::::::: FUERA DE WHILE");
 
-      if (posicion <= 150)
+      if (disIrSenValue[0] > 130 || disIrSenValue[1] > 130)
       {
-        motores(-velatras, veladelante);
-      }
-      else if (posicion >= 550)
-      {
-        motores(veladelante, -velatras);
+        motor_stop();
       }
       else
       {
-        PID();
+        readSensLinea();
+        posicion = calcPosicion();
+
+        Serial.print("       | POS: ");
+        Serial.println(posicion);
+        Serial.println("");
+
+        if (posicion <= 150)
+        {
+          motores(-velatras, veladelante);
+        }
+        else if (posicion >= 550)
+        {
+          motores(veladelante, -velatras);
+        }
+        else
+        {
+          PID();
+        }
       }
     }
 
@@ -501,7 +515,7 @@ void loop()
 
     //ESTADO CUANDO PRESIONA BOTONERA DELANTERA
 
-    while (flagFuncArranque)
+    if (flagFuncArranque)
     {
       Serial.println("::::::::::::::::::::::::::: DENTRO DE WHILE");
       //ENCENCER LUZ SIRENA
@@ -537,47 +551,43 @@ void loop()
       Serial.println("CW");
       delay(10);
     }
-
-    Serial.println("::::::::::::::::::::::::::: FUERA DE WHILE");
-
-    if (disIrSenValue[0] > 130 || disIrSenValue[1] > 130) // Adelante || ATRAS
-    {
-      motor_stop();
-    }
     else
     {
-      readSensLinea();
-      posicion = calcPosicion();
+      Serial.println("::::::::::::::::::::::::::: FUERA DE WHILE");
 
-      Serial.print("       | POS: ");
-      Serial.print(posicion);
-      Serial.println("");
-
-      if (posicion <= 150)
+      if (disIrSenValue[0] > 130 || disIrSenValue[1] > 130) // Adelante || ATRAS
       {
-        motores(-velatras, veladelante);
-      }
-      else if (posicion >= 550)
-      {
-        motores(veladelante, -velatras);
+        motor_stop();
       }
       else
       {
-        PID();
-      }
-    }
+        readSensLinea();
+        posicion = calcPosicion();
 
-    //TODO: implementar funcion para girar cuando detecta marcas
+        Serial.print("       | POS: ");
+        Serial.print(posicion);
+        Serial.println("");
+
+        if (posicion <= 150)
+        {
+          motores(-velatras, veladelante);
+        }
+        else if (posicion >= 550)
+        {
+          motores(veladelante, -velatras);
+        }
+        else
+        {
+          PID();
+        }
+      }
+
+      //TODO: implementar funcion para girar cuando detecta marcas
+    }
 
     break;
 
   case STOP:
-    PWM_off();
-    motor_stop();
-
-    // RESETEAR FLAG SECUENCIA DE ARRANQUE
-    flagFuncArranque = true;
-    fadeValue = 0;
 
     PORTH &= ~(1 << PWMIZQ0); // LOW Y OTRO HIGH ES PARA ATRAS
     PORTH &= ~(1 << PWMIZQ1);
@@ -588,6 +598,17 @@ void loop()
     //APAGAR LUZ SIRENA
     PORTL |= (1 << PORTL6);
     PORTL &= ~(1 << PORTL7); // PITO OFF
+
+    PWM_off();
+
+    motor_stop();
+
+    // RESETEAR FLAG SECUENCIA DE ARRANQUE
+    flagFuncArranque = true;
+    fadeValue = 0;
+
+    //velPwm = 0;
+
     break;
   }
 }
@@ -896,6 +917,7 @@ void motores(int izq, int der)
   Serial.print("     |     ");
   Serial.print(der);
   Serial.println("");
+
   //----------- MOT IZQ -----------
   if (izq >= 0)
   {
@@ -942,8 +964,9 @@ void motores(int izq, int der)
 
   //setDutyPWMIZQ(izq); // 0...255 TO 0...100 ESTABA ANTES
 
-  // --------------------------------------------------------------------------- DEBUG
+  // --------------------------------------------------------------------------- DEBUG ----------
   setDutyPWMDER(izq); // 0...255
+
   /*
   switch (state)
   {
@@ -1002,7 +1025,7 @@ void motores(int izq, int der)
 
   //setDutyPWMDER(der); // 0...255 TO 0...100 ESTABA ANTES
 
-  // --------------------------------------------------------------------------- DEBUG
+  // --------------------------------------------------------------------------- DEBUG ----------
   setDutyPWMIZQ(der); // 0...255 TO 0...100
 
   /*  
@@ -1017,12 +1040,12 @@ void motores(int izq, int der)
     break;
   }
   */
-  /*
+  
   Serial.print(izq);
   Serial.print("     |     ");
   Serial.print(der);
   Serial.println("");
-  */
+  
 }
 
 /*
