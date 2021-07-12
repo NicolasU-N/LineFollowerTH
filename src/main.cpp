@@ -167,6 +167,8 @@ int setpoint = 350; // Mitad de sensores
 
 boolean flagFuncArranque = true; // TRUE cuando no corre el arranque FALSE cuando ya lo corre
 
+boolean flagArrStopAuto = true; // TRUE cuando arranque stop es auto False Cuando se para por btn
+
 // datos para la integral
 int errors[6];
 
@@ -224,11 +226,9 @@ ISR(INT2_vect) //
     PORTL |= (1 << PORTL6);
     PORTL &= ~(1 << PORTL7); // PITO OFF
 
-    //APAGAR LUZ SIRENA
-    //PORTL |= (1 << PORTL6);
-    //_delay_ms(10);
-    //PORTL &= ~(1 << PORTL7); // PITO OFF
-    //_delay_ms(10);
+    flagArrStopAuto = false; // ESTADO DE ARRANQUE AUTO
+    setDutyPWMIZQ(0);        //STOP
+    setDutyPWMDER(0);
   }
   lastintetime = interruptiontime;
 }
@@ -411,22 +411,26 @@ void loop()
   }
 
   static unsigned long previousMillis3 = 0;
-  if ((millis() - previousMillis3) > 300)
+  if ((millis() - previousMillis3) > 100)
   {
 
     //-------------------------------------------------------DEBUG
 
-    // ------------------------------- FUNCTION STOP
-    if (lineSenFront[0] == 1 and lineSenFront[1] == 1 and lineSenFront[2] == 1 and lineSenFront[3] == 1 and lineSenFront[4] == 1 and lineSenFront[5] == 1)
+    if (!flagArrStopAuto) // Si es false
     {
-      state = STOP;
+      // ------------------------------- FUNCTION STOP
+      if (lineSenFront[0] == 1 and lineSenFront[1] == 1 and lineSenFront[2] == 1 and lineSenFront[3] == 1 and lineSenFront[4] == 1 and lineSenFront[5] == 1)
+      {
+        state = STOP;
+        flagArrStopAuto = true;
+      }
     }
 
     //readVoltage(); // LEER VOLTAJE BATERIA
 
     readVoltEmergency();
 
-    previousMillis3 += 300;
+    previousMillis3 += 100;
   }
 
   switch (state)
@@ -620,8 +624,9 @@ void motor_CW()
     fadeValue++; // Valor max para 252 pwm
   }
   else
-  { // CAMBIAR FLAG
+  {
     flagFuncArranque = false;
+    flagArrStopAuto = false;
   }
 
   velPwm = funcPwm(fadeValue);
