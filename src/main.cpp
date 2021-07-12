@@ -216,18 +216,14 @@ ISR(INT2_vect) //
     PWM_off();
     state = STOP;
 
-    PORTH &= ~(1 << PWMIZQ0); // LOW Y OTRO HIGH ES PARA ATRAS
-    PORTH &= ~(1 << PWMIZQ1);
-
-    PORTE &= ~(1 << PWMDER1);
-    PORTG &= ~(1 << PWMDER0);
-
     //APAGAR LUZ SIRENA
     PORTL |= (1 << PORTL6);
     PORTL &= ~(1 << PORTL7); // PITO OFF
 
     flagArrStopAuto = false; // ESTADO DE ARRANQUE AUTO
-    setDutyPWMIZQ(0);        //STOP
+    fadeValue = 0;
+
+    setDutyPWMIZQ(0); //STOP
     setDutyPWMDER(0);
   }
   lastintetime = interruptiontime;
@@ -252,7 +248,7 @@ ISR(INT3_vect)
   else
   {
   }
-*/
+  */
     Serial.println("#######################################------------------------ BACKBBBBBBB");
 
     PWM_on();
@@ -399,7 +395,7 @@ void loop()
 {
 
   static unsigned long previousMillis1 = 0;
-  if ((millis() - previousMillis1) > 1000)
+  if ((millis() - previousMillis1) > 800)
   {
     //------------DO
     //readUltrasonicSen();
@@ -407,7 +403,9 @@ void loop()
 
     //readDisIrSen();
 
-    previousMillis1 += 1000;
+    readVoltEmergency();
+
+    previousMillis1 += 800;
   }
 
   static unsigned long previousMillis3 = 0;
@@ -428,8 +426,6 @@ void loop()
 
     //readVoltage(); // LEER VOLTAJE BATERIA
 
-    readVoltEmergency();
-
     previousMillis3 += 100;
   }
 
@@ -445,8 +441,7 @@ void loop()
     }
     else
     {
-
-      Serial.println("::::::::::::::::::::::::::: FUERA DE WHILE");
+      //Serial.println("::::::::::::::::::::::::::: FUERA DE WHILE");
 
       if (disIrSenValue[0] > 130 || disIrSenValue[1] > 130)
       {
@@ -522,6 +517,7 @@ void loop()
       //TODO: implementar funcion para girar cuando detecta marcas
     }
 */
+
     if (disIrSenValue[0] > 130 || disIrSenValue[1] > 130) // Adelante || ATRAS
     {
       motor_stop();
@@ -535,16 +531,15 @@ void loop()
       Serial.print(posicion);
       Serial.println("");
 
-      if (posicion > 0 && posicion <= 250) // Detecta linea
+      if (posicion > 0 && posicion <= 300) // Detecta linea
       {
         state = STOP;
-
         PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
         PORTL |= (1 << PORTL7);  // ENCENDIDO PITO // Activado
       }
       else
       {
-        motores(-velatras, veladelante);
+        motores(veladelante, -velatras);
       }
     }
 
@@ -639,6 +634,7 @@ void motor_CW()
   delay(10);
 }
 
+/*
 void motor_CCW()
 {
   //Serial.println("::::::::::::::::::::::::::: DENTRO DE WHILE");
@@ -675,6 +671,7 @@ void motor_CCW()
   Serial.println("CCW");
   delay(10);
 }
+*/
 
 void motor_stop()
 {
@@ -898,30 +895,34 @@ void motores(int izq, int der)
     //ADELANTE
     //PORTD |= (1 << MOT_IZQ_ADELANTE); // MOTOR ON
     //PORTD &= ~(1 << MOT_IZQ_ATRAS);   // MOTOR OFF
-
+    PORTH &= ~(1 << PWMIZQ1);
+    PORTH |= (1 << PWMIZQ0);
+    /*
     switch (state)
     {
     case BACKF:
       // ADELANTE MOTOR IZQ
-      PORTH &= ~(1 << PWMIZQ1);
-      PORTH |= (1 << PWMIZQ0);
+      
       break;
     case BACKB:
       PORTH |= (1 << PWMIZQ1);
       PORTH &= ~(1 << PWMIZQ0);
       break;
     }
+    */
   }
   else
   {
     //ATRAS
     //PORTD &= ~(1 << MOT_IZQ_ADELANTE); // MOTOR ON
     //PORTD |= (1 << MOT_IZQ_ATRAS);     // MOTOR OFF
+    PORTH |= (1 << PWMIZQ1);
+    PORTH &= ~(1 << PWMIZQ0);
+    /*
     switch (state)
     {
     case BACKF:
-      PORTH |= (1 << PWMIZQ1);
-      PORTH &= ~(1 << PWMIZQ0);
+      
       break;
 
     case BACKB:
@@ -930,6 +931,7 @@ void motores(int izq, int der)
       PORTH |= (1 << PWMIZQ0);
       break;
     }
+    */
 
     izq = abs(izq); // convert to positive value
   }
@@ -939,8 +941,9 @@ void motores(int izq, int der)
   //setDutyPWMIZQ(izq); // 0...255 TO 0...100 ESTABA ANTES
 
   // --------------------------------------------------------------------------- DEBUG ----------
-  //setDutyPWMDER(izq); // 0...255
+  setDutyPWMDER(izq); // 0...255
 
+  /*
   switch (state)
   {
   case BACKF:
@@ -951,6 +954,7 @@ void motores(int izq, int der)
     setDutyPWMIZQ(izq); // 0...255
     break;
   }
+  */
 
   //----------- MOT DER -----------
   if (der >= 0)
@@ -959,17 +963,20 @@ void motores(int izq, int der)
     //PORTB |= (1 << MOT_DER_ADELANTE); // MOTOR ON
     //PORTD &= ~(1 << MOT_DER_ATRAS);   // MOTOR OFF
 
+    PORTE |= (1 << PWMDER1);
+    PORTG &= ~(1 << PWMDER0);
+    /*
     switch (state)
     {
     case BACKF:
-      PORTE |= (1 << PWMDER1);
-      PORTG &= ~(1 << PWMDER0);
+      
       break;
     case BACKB:
       PORTE &= ~(1 << PWMDER1);
       PORTG |= (1 << PWMDER0);
       break;
     }
+    */
   }
   else
   {
@@ -977,11 +984,14 @@ void motores(int izq, int der)
     //PORTB &= ~(1 << MOT_DER_ADELANTE); // MOTOR ON
     //PORTD |= (1 << MOT_DER_ATRAS);     // MOTOR OFF
 
+    PORTE &= ~(1 << PWMDER1);
+    PORTG |= (1 << PWMDER0);
+
+    /*
     switch (state)
     {
     case BACKF:
-      PORTE &= ~(1 << PWMDER1);
-      PORTG |= (1 << PWMDER0);
+      
       break;
 
     case BACKB:
@@ -989,6 +999,7 @@ void motores(int izq, int der)
       PORTG &= ~(1 << PWMDER0);
       break;
     }
+    */
 
     der = abs(der); // convert to positive value
   }
@@ -998,8 +1009,9 @@ void motores(int izq, int der)
   //setDutyPWMDER(der); // 0...255 TO 0...100 ESTABA ANTES
 
   // --------------------------------------------------------------------------- DEBUG ----------
-  //setDutyPWMIZQ(der); // 0...255 TO 0...100
+  setDutyPWMIZQ(der); // 0...255 TO 0...100
 
+  /*
   switch (state)
   {
   case BACKF:
@@ -1010,6 +1022,7 @@ void motores(int izq, int der)
     setDutyPWMDER(der); // 0...255 TO 0...100
     break;
   }
+  */
 
   Serial.print(izq);
   Serial.print("     |     ");
