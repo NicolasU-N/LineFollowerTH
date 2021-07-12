@@ -363,6 +363,10 @@ void setup()
   PORTC |= (1 << PORTC6) | (1 << PORTC4) | (1 << PORTC2) | (1 << PORTC0);
   PORTG |= (1 << PORTG2) | (1 << PORTG0);
 
+  //----------- VENTILADOR CAJA
+  DDRB |= (1 << DDB2);
+  PORTB |= (1 << PORTB2);
+
   //----------- ESTADO INICIAL
   // COMUN RELE
   PORTL |= (1 << PORTL4);
@@ -441,9 +445,9 @@ void loop()
     }
     else
     {
-      //Serial.println("::::::::::::::::::::::::::: FUERA DE WHILE");
+      Serial.println("::::::::::::::::::::::::::: FUERA DE WHILE");
 
-      if (disIrSenValue[0] > 130 || disIrSenValue[1] > 130)
+      if (disIrSenValue[0] > 130 || disIrSenValue[1] > 130 || distUltra[2] < 50 || distUltra[5] < 50) //|| distUltra[0] > 50
       {
         motor_stop();
       }
@@ -518,7 +522,7 @@ void loop()
     }
 */
 
-    if (disIrSenValue[0] > 130 || disIrSenValue[1] > 130) // Adelante || ATRAS
+    if ((disIrSenValue[0] > 130 || disIrSenValue[1] > 130 || distUltra[2] < 50 || distUltra[5] < 50)) // || distUltra[0] > 50 Adelante || ATRAS
     {
       motor_stop();
     }
@@ -539,7 +543,7 @@ void loop()
       }
       else
       {
-        motores(veladelante, -velatras);
+        motores(-velatras, veladelante);
       }
     }
 
@@ -547,6 +551,7 @@ void loop()
 
   case STOP:
 
+    //Serial.println("STOPPPPPP");
     PWM_off();
 
     motor_stop();
@@ -895,34 +900,31 @@ void motores(int izq, int der)
     //ADELANTE
     //PORTD |= (1 << MOT_IZQ_ADELANTE); // MOTOR ON
     //PORTD &= ~(1 << MOT_IZQ_ATRAS);   // MOTOR OFF
-    PORTH &= ~(1 << PWMIZQ1);
-    PORTH |= (1 << PWMIZQ0);
-    /*
+
     switch (state)
     {
     case BACKF:
       // ADELANTE MOTOR IZQ
-      
+      PORTH &= ~(1 << PWMIZQ1);
+      PORTH |= (1 << PWMIZQ0);
       break;
     case BACKB:
       PORTH |= (1 << PWMIZQ1);
       PORTH &= ~(1 << PWMIZQ0);
       break;
     }
-    */
   }
   else
   {
     //ATRAS
     //PORTD &= ~(1 << MOT_IZQ_ADELANTE); // MOTOR ON
     //PORTD |= (1 << MOT_IZQ_ATRAS);     // MOTOR OFF
-    PORTH |= (1 << PWMIZQ1);
-    PORTH &= ~(1 << PWMIZQ0);
-    /*
+
     switch (state)
     {
     case BACKF:
-      
+      PORTH |= (1 << PWMIZQ1);
+      PORTH &= ~(1 << PWMIZQ0);
       break;
 
     case BACKB:
@@ -931,7 +933,6 @@ void motores(int izq, int der)
       PORTH |= (1 << PWMIZQ0);
       break;
     }
-    */
 
     izq = abs(izq); // convert to positive value
   }
@@ -963,20 +964,17 @@ void motores(int izq, int der)
     //PORTB |= (1 << MOT_DER_ADELANTE); // MOTOR ON
     //PORTD &= ~(1 << MOT_DER_ATRAS);   // MOTOR OFF
 
-    PORTE |= (1 << PWMDER1);
-    PORTG &= ~(1 << PWMDER0);
-    /*
     switch (state)
     {
     case BACKF:
-      
+      PORTE |= (1 << PWMDER1);
+      PORTG &= ~(1 << PWMDER0);
       break;
     case BACKB:
       PORTE &= ~(1 << PWMDER1);
       PORTG |= (1 << PWMDER0);
       break;
     }
-    */
   }
   else
   {
@@ -984,14 +982,11 @@ void motores(int izq, int der)
     //PORTB &= ~(1 << MOT_DER_ADELANTE); // MOTOR ON
     //PORTD |= (1 << MOT_DER_ATRAS);     // MOTOR OFF
 
-    PORTE &= ~(1 << PWMDER1);
-    PORTG |= (1 << PWMDER0);
-
-    /*
     switch (state)
     {
     case BACKF:
-      
+      PORTE &= ~(1 << PWMDER1);
+      PORTG |= (1 << PWMDER0);
       break;
 
     case BACKB:
@@ -999,7 +994,6 @@ void motores(int izq, int der)
       PORTG &= ~(1 << PWMDER0);
       break;
     }
-    */
 
     der = abs(der); // convert to positive value
   }
