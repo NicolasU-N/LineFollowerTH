@@ -44,7 +44,7 @@ Physical Pin      Arduino Pin    Port Pin     Function
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <util/delay.h>
-#include <ADC.h>
+//#include <ADC.h>
 #include <PWM.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
@@ -273,10 +273,6 @@ ISR(INT4_vect)
 
     PWM_on();
     state = BACKF;
-
-    //ENCENCER LUZ SIRENA
-    //PORTL &= ~(1 << PORTL6);
-    //PORTL &= ~(1 << PORTL7); // PITO OFF
   }
   lastintetime = interruptiontime;
 }
@@ -415,7 +411,7 @@ void loop()
   }
 
   static unsigned long previousMillis3 = 0;
-  if ((millis() - previousMillis3) > 400)
+  if ((millis() - previousMillis3) > 300)
   {
 
     //-------------------------------------------------------DEBUG
@@ -430,7 +426,7 @@ void loop()
 
     readVoltEmergency();
 
-    previousMillis3 += 400;
+    previousMillis3 += 300;
   }
 
   switch (state)
@@ -441,39 +437,7 @@ void loop()
 
     if (flagFuncArranque)
     {
-      Serial.println("::::::::::::::::::::::::::: DENTRO DE WHILE");
-      //ENCENCER LUZ SIRENA
-      PORTL &= ~(1 << PORTL6);
-      PORTL &= ~(1 << PORTL7); // PITO OFF
-
-      //PUENTE H
-      PORTH &= ~(1 << PWMIZQ1); // LOW Y OTRO HIGH ES PARA ATRAS
-      PORTH |= (1 << PWMIZQ0);
-
-      PORTE |= (1 << PWMDER1);
-      PORTG &= ~(1 << PWMDER0);
-
-      if (fadeValue < 447)
-      {
-        fadeValue++; // Valor max para 252 pwm
-      }
-      else
-      { // CAMBIAR FLAG
-        flagFuncArranque = false;
-      }
-
-      velPwm = funcPwm(fadeValue);
-      //Serial.println(velPwm);
-
-      setDutyPWMIZQ(velPwm);
-      setDutyPWMDER(velPwm);
-
-      //analogWrite(RENIZQ, velPwm);
-      //analogWrite(LENIZQ, velPwm);
-      //analogWrite(ENDER, velPwm);
-      //analogWrite(ENIZQ, velPwm);
-      Serial.println("CW");
-      delay(10);
+      motor_CW();
     }
     else
     {
@@ -515,45 +479,14 @@ void loop()
 
     //ESTADO CUANDO PRESIONA BOTONERA DELANTERA
 
+    /*
     if (flagFuncArranque)
     {
-      Serial.println("::::::::::::::::::::::::::: DENTRO DE WHILE");
-      //ENCENCER LUZ SIRENA
-      PORTL &= ~(1 << PORTL6);
-      PORTL &= ~(1 << PORTL7); // PITO OFF
-
-      //PUENTE H
-      PORTH &= ~(1 << PWMIZQ0); // LOW Y OTRO HIGH ES PARA ATRAS
-      PORTH |= (1 << PWMIZQ1);
-
-      PORTE &= ~(1 << PWMDER1);
-      PORTG |= (1 << PWMDER0);
-
-      if (fadeValue < 447)
-      {
-        fadeValue++; // Valor max para 252 pwm
-      }
-      else
-      { // CAMBIAR FLAG
-        flagFuncArranque = false;
-      }
-
-      velPwm = funcPwm(fadeValue);
-      //Serial.println(velPwm);
-
-      setDutyPWMIZQ(velPwm);
-      setDutyPWMDER(velPwm);
-
-      //analogWrite(RENIZQ, velPwm);
-      //analogWrite(LENIZQ, velPwm);
-      //analogWrite(ENDER, velPwm);
-      //analogWrite(ENIZQ, velPwm);
-      Serial.println("CW");
-      delay(10);
+      motor_CCW();
     }
     else
     {
-      Serial.println("::::::::::::::::::::::::::: FUERA DE WHILE");
+      //Serial.println("::::::::::::::::::::::::::: FUERA DE WHILE");
 
       if (disIrSenValue[0] > 130 || disIrSenValue[1] > 130) // Adelante || ATRAS
       {
@@ -570,11 +503,11 @@ void loop()
 
         if (posicion <= 150)
         {
-          motores(-velatras, veladelante);
+          motores(velatras, -veladelante);
         }
         else if (posicion >= 550)
         {
-          motores(veladelante, -velatras);
+          motores(-veladelante, velatras);
         }
         else
         {
@@ -584,10 +517,40 @@ void loop()
 
       //TODO: implementar funcion para girar cuando detecta marcas
     }
+*/
+    if (disIrSenValue[0] > 130 || disIrSenValue[1] > 130) // Adelante || ATRAS
+    {
+      motor_stop();
+    }
+    else
+    {
+      readSensLinea();
+      posicion = calcPosicion();
+
+      Serial.print("       | POS: ");
+      Serial.print(posicion);
+      Serial.println("");
+
+      if (posicion > 0 && posicion <= 250) // Detecta linea
+      {
+        state = STOP;
+
+        PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
+        PORTL |= (1 << PORTL7);  // ENCENDIDO PITO // Activado
+      }
+      else
+      {
+        motores(-velatras, veladelante);
+      }
+    }
 
     break;
 
   case STOP:
+
+    PWM_off();
+
+    motor_stop();
 
     PORTH &= ~(1 << PWMIZQ0); // LOW Y OTRO HIGH ES PARA ATRAS
     PORTH &= ~(1 << PWMIZQ1);
@@ -599,15 +562,9 @@ void loop()
     PORTL |= (1 << PORTL6);
     PORTL &= ~(1 << PORTL7); // PITO OFF
 
-    PWM_off();
-
-    motor_stop();
-
     // RESETEAR FLAG SECUENCIA DE ARRANQUE
     flagFuncArranque = true;
     fadeValue = 0;
-
-    //velPwm = 0;
 
     break;
   }
@@ -646,6 +603,12 @@ void initLCDi()
 
 void motor_CW()
 {
+  //Serial.println("::::::::::::::::::::::::::: DENTRO DE WHILE");
+  //ENCENCER LUZ SIRENA
+  PORTL &= ~(1 << PORTL6);
+  PORTL &= ~(1 << PORTL7); // PITO OFF
+
+  //PUENTE H
   PORTH &= ~(1 << PWMIZQ1); // LOW Y OTRO HIGH ES PARA ATRAS
   PORTH |= (1 << PWMIZQ0);
 
@@ -656,6 +619,10 @@ void motor_CW()
   {
     fadeValue++; // Valor max para 252 pwm
   }
+  else
+  { // CAMBIAR FLAG
+    flagFuncArranque = false;
+  }
 
   velPwm = funcPwm(fadeValue);
   //Serial.println(velPwm);
@@ -663,16 +630,18 @@ void motor_CW()
   setDutyPWMIZQ(velPwm);
   setDutyPWMDER(velPwm);
 
-  //analogWrite(RENIZQ, velPwm);
-  //analogWrite(LENIZQ, velPwm);
-  //analogWrite(ENDER, velPwm);
-  //analogWrite(ENIZQ, velPwm);
   Serial.println("CW");
   delay(10);
 }
 
 void motor_CCW()
 {
+  //Serial.println("::::::::::::::::::::::::::: DENTRO DE WHILE");
+  //ENCENCER LUZ SIRENA
+  PORTL &= ~(1 << PORTL6);
+  PORTL &= ~(1 << PORTL7); // PITO OFF
+
+  //PUENTE H
   PORTH &= ~(1 << PWMIZQ0); // LOW Y OTRO HIGH ES PARA ATRAS
   PORTH |= (1 << PWMIZQ1);
 
@@ -683,18 +652,21 @@ void motor_CCW()
   {
     fadeValue++; // Valor max para 252 pwm
   }
+  else
+  { // CAMBIAR FLAG
+    flagFuncArranque = false;
+  }
 
   velPwm = funcPwm(fadeValue);
   //Serial.println(velPwm);
 
-  //analogWrite(ENDER, velPwm);
-  //analogWrite(ENIZQ, velPwm);
   setDutyPWMIZQ(velPwm);
   setDutyPWMDER(velPwm);
+
   //analogWrite(RENIZQ, velPwm);
   //analogWrite(LENIZQ, velPwm);
-  //analogWrite(LENDER, velPwm);
-  //analogWrite(RENDER, velPwm);
+  //analogWrite(ENDER, velPwm);
+  //analogWrite(ENIZQ, velPwm);
   Serial.println("CCW");
   delay(10);
 }
@@ -736,13 +708,6 @@ void motor_stop()
    
   }
 */
-  //analogWrite(ENDER, 0);
-  //setDutyPWMIZQ(0); //STOP
-  //setDutyPWMDER(0);
-  //analogWrite(RENDER, 0);
-  //analogWrite(LENDER, 0);
-  //analogWrite(RENIZQ, 0);
-  //analogWrite(LENIZQ, 0);
   setDutyPWMIZQ(0); //STOP
   setDutyPWMDER(0);
   //Serial.println("STOP");
@@ -775,18 +740,21 @@ void readSensLinea()
     Serial.println((PINL & (1 << PINL1)) > 0 ? 1 : 0);
     Serial.println((PINL & (1 << PINL0)) > 0 ? 1 : 0);
   */
-  if (state == BACKF)
-  {
-    for (size_t i = 0; i < 6; i++)
-    {
-      //Serial.print("f");
-      //Serial.print(i);
-      //Serial.print("--");
 
-      Serial.print(lineSenFront[i]);
-      Serial.print("--");
-    }
+  //if (state == BACKF)
+  //{
+
+  for (size_t i = 0; i < 6; i++)
+  {
+    //Serial.print("f");
+    //Serial.print(i);
+    //Serial.print("--");
+
+    Serial.print(lineSenFront[i]);
+    Serial.print("--");
   }
+
+  //}
 
   lineSenLatDer[0] = ((PINA & (1 << PINA0)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
                                                                                   : 1);
@@ -802,19 +770,23 @@ void readSensLinea()
       Serial.print(lineSenLatDer[i]);
     }
   */
-  lineSenBack[0] = ((PINA & (1 << PINA2)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
+
+  /*
+  lineSenBack[0] = ((PINA & (1 << PINA5)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
                                                                                 : 1);
-  lineSenBack[1] = ((PINA & (1 << PINA3)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
+  lineSenBack[1] = ((PINA & (1 << PINA4)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
                                                                                 : 1);
-  lineSenBack[2] = ((PINA & (1 << PINA4)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
+  lineSenBack[2] = ((PINA & (1 << PINA3)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
                                                                                 : 1);
-  lineSenBack[3] = ((PINA & (1 << PINA5)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
+  lineSenBack[3] = ((PINA & (1 << PINA2)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
                                                                                 : 1);
   lineSenBack[4] = ((PINA & (1 << PINA6)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
                                                                                 : 1);
   lineSenBack[5] = ((PINA & (1 << PINA7)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
                                                                                 : 1);
+  */
 
+  /*
   if (state == BACKB)
   {
     for (size_t i = 0; i < 6; i++)
@@ -826,6 +798,7 @@ void readSensLinea()
       Serial.print("--");
     }
   }
+  */
 
   lineSenLatIzq[0] = ((PINL & (1 << PINL3)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
                                                                                   : 1);
@@ -853,8 +826,8 @@ int calcPosicion()
   int pos = 0;
   for (uint8_t i = 0; i < 6; i++) // 6 sensores
   {
-    sumap += state == BACKF ? lineSenFront[i] * (i + 1) * factor : lineSenBack[i] * (i + 1) * factor;
-    suma += state == BACKF ? lineSenFront[i] : lineSenBack[i];
+    sumap += lineSenFront[i] * (i + 1) * factor; // state == BACKF ? ||||||   : lineSenBack[i] * (i + 1) * factor
+    suma += lineSenFront[i];                     // state == BACKF ? : lineSenBack[i]
   }
 
   pos = (sumap / suma);
@@ -913,10 +886,6 @@ void PID()
 */
 void motores(int izq, int der)
 {
-  Serial.print(izq);
-  Serial.print("     |     ");
-  Serial.print(der);
-  Serial.println("");
 
   //----------- MOT IZQ -----------
   if (izq >= 0)
@@ -965,9 +934,8 @@ void motores(int izq, int der)
   //setDutyPWMIZQ(izq); // 0...255 TO 0...100 ESTABA ANTES
 
   // --------------------------------------------------------------------------- DEBUG ----------
-  setDutyPWMDER(izq); // 0...255
+  //setDutyPWMDER(izq); // 0...255
 
-  /*
   switch (state)
   {
   case BACKF:
@@ -978,7 +946,6 @@ void motores(int izq, int der)
     setDutyPWMIZQ(izq); // 0...255
     break;
   }
-  */
 
   //----------- MOT DER -----------
   if (der >= 0)
@@ -1026,9 +993,8 @@ void motores(int izq, int der)
   //setDutyPWMDER(der); // 0...255 TO 0...100 ESTABA ANTES
 
   // --------------------------------------------------------------------------- DEBUG ----------
-  setDutyPWMIZQ(der); // 0...255 TO 0...100
+  //setDutyPWMIZQ(der); // 0...255 TO 0...100
 
-  /*  
   switch (state)
   {
   case BACKF:
@@ -1039,13 +1005,11 @@ void motores(int izq, int der)
     setDutyPWMDER(der); // 0...255 TO 0...100
     break;
   }
-  */
-  
+
   Serial.print(izq);
   Serial.print("     |     ");
   Serial.print(der);
   Serial.println("");
-  
 }
 
 /*
