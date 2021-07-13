@@ -118,7 +118,7 @@ boolean linestatus = true; //true->negra | false->blanca
 boolean chargeFlag = false;
 
 // ------------------- Arranque y parada
-uint16_t fadeValue;
+int fadeValue;
 int velPwm;
 
 // ------------------- Sensores de linea
@@ -173,12 +173,12 @@ boolean flagArrStopAuto = true; // TRUE cuando arranque stop es auto False Cuand
 int errors[6];
 
 // ------------------- INICIALIZAR FUNCIONES
-int funcPwm(uint16_t &t);
+int funcPwm(int &t);
 
 void motores(int izq, int der);
 void motor_stop();
 void motor_CW();
-void motor_CCW();
+//void motor_CCW();
 
 void readVoltEmergency();
 void readVoltage();
@@ -402,12 +402,21 @@ void setup()
 void loop()
 {
 
+  static unsigned long previousMillis0 = 0;
+  if ((millis() - previousMillis0) > 1000)
+  {
+    //------------DO
+
+    //readLoadCell();
+    //readDisIrSen();
+
+    readVoltage(); // LEER VOLTAJE BATERIA
+
+    previousMillis0 += 1000;
+  }
+
   static unsigned long previousMillis1 = 0;
-<<<<<<< HEAD
-  if ((millis() - previousMillis1) > 800)
-=======
   if ((millis() - previousMillis1) > 300)
->>>>>>> testsensors
   {
     //------------DO
     readUltrasonicSen();
@@ -416,17 +425,12 @@ void loop()
 
     readVoltEmergency();
 
-<<<<<<< HEAD
-    previousMillis1 += 800;
-=======
     previousMillis1 += 300;
->>>>>>> testsensors
   }
 
   static unsigned long previousMillis3 = 0;
   if ((millis() - previousMillis3) > 100)
   {
-
     //-------------------------------------------------------DEBUG
 
     if (!flagArrStopAuto) // Si es false
@@ -438,8 +442,6 @@ void loop()
         flagArrStopAuto = true;
       }
     }
-
-    //readVoltage(); // LEER VOLTAJE BATERIA
 
     previousMillis3 += 100;
   }
@@ -456,13 +458,9 @@ void loop()
     }
     else
     {
-      Serial.println("::::::::::::::::::::::::::: FUERA DE WHILE");
+      //Serial.println("::::::::::::::::::::::::::: FUERA DE WHILE");
 
-<<<<<<< HEAD
-      if (disIrSenValue[0] > 130 || disIrSenValue[1] > 130 || distUltra[2] < 50 || distUltra[5] < 50) //|| distUltra[0] > 50
-=======
       if (((disIrSenValue[0] > 50) && (disIrSenValue[0] < 75)) || ((disIrSenValue[1] > 130) && (disIrSenValue[1] < 160)) || ((distUltra[0] > 50) && (distUltra[0] < 75)) || ((distUltra[2] > 50) && (distUltra[2] < 75)) || ((distUltra[5] > 50) && (distUltra[5] < 75)))
->>>>>>> testsensors
       {
         state = STOP;
         motores(-245, -245);
@@ -471,7 +469,6 @@ void loop()
         _delay_ms(200);
         PORTL &= ~(1 << PORTL7);
         PORTL |= (1 << PORTL6);
-        _delay_ms(200);
       }
       else
       {
@@ -504,51 +501,7 @@ void loop()
 
     //ESTADO CUANDO PRESIONA BOTONERA DELANTERA
 
-    /*
-    if (flagFuncArranque)
-    {
-      motor_CCW();
-    }
-    else
-    {
-      //Serial.println("::::::::::::::::::::::::::: FUERA DE WHILE");
-
-      if (disIrSenValue[0] > 130 || disIrSenValue[1] > 130) // Adelante || ATRAS
-      {
-        motor_stop();
-      }
-      else
-      {
-        readSensLinea();
-        posicion = calcPosicion();
-
-        Serial.print("       | POS: ");
-        Serial.print(posicion);
-        Serial.println("");
-
-        if (posicion <= 150)
-        {
-          motores(velatras, -veladelante);
-        }
-        else if (posicion >= 550)
-        {
-          motores(-veladelante, velatras);
-        }
-        else
-        {
-          PID();
-        }
-      }
-
-      //TODO: implementar funcion para girar cuando detecta marcas
-    }
-*/
-<<<<<<< HEAD
-
-    if ((disIrSenValue[0] > 130 || disIrSenValue[1] > 130 || distUltra[2] < 50 || distUltra[5] < 50)) // || distUltra[0] > 50 Adelante || ATRAS
-=======
     if (((disIrSenValue[0] > 50) && (disIrSenValue[0] < 75)) || ((disIrSenValue[1] > 130) && (disIrSenValue[1] < 160)) || ((distUltra[0] > 50) && (distUltra[0] < 75)) || ((distUltra[2] > 50) && (distUltra[2] < 75)) || ((distUltra[5] > 50) && (distUltra[5] < 75)))
->>>>>>> testsensors
     {
       //motor_stop();
       state = STOP;
@@ -558,7 +511,6 @@ void loop()
       _delay_ms(200);
       PORTL &= ~(1 << PORTL7);
       PORTL |= (1 << PORTL6);
-      _delay_ms(200);
     }
     else
     {
@@ -569,16 +521,11 @@ void loop()
       Serial.print(posicion);
       Serial.println("");
 
-<<<<<<< HEAD
-      if (posicion > 0 && posicion <= 300) // Detecta linea
-      {
-=======
       if (lineSenFront[4] == 1 && lineSenFront[5] == 1) // Detecta linea
       {
 
         motores(veladelante, -velatras);
         _delay_ms(500);
->>>>>>> testsensors
         state = STOP;
         PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
         PORTL |= (1 << PORTL7);  // ENCENDIDO PITO // Activado
@@ -1071,7 +1018,7 @@ void motores(int izq, int der)
   @brief funcion exponencial para generar arranque suave  
   @param tiempo
 */
-int funcPwm(uint16_t &t)
+int funcPwm(int &t)
 {
   return (int)2 * exp(0.0108 * t);
 }
@@ -1096,8 +1043,9 @@ void readLoadCell()
 void readVoltage()
 {
   uint16_t read = analogRead(BATTLEVEL);
-  uint16_t level = map(read, 0, 1023, 0, 4700);
+  uint16_t level = map(read, 0, 1023, 0, 4700); //CAMBIAR NIVEL DE VOLTAJE
 
+  /*
   if (level <= 3900)
   {
     chargeFlag = true;
@@ -1106,9 +1054,10 @@ void readVoltage()
   {
     chargeFlag = false;
   }
+*/
 
   Serial.print("-----> NIVEL DE BAT: ");
-  Serial.println(level);
+  Serial.println(read); // level
 }
 
 /*

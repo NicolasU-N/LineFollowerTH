@@ -9,18 +9,27 @@ HX711 scale;
 void setup() {
   Serial.begin(115200);
   scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
+
+  Serial.print("Lectura del valor del ADC: ");
+  Serial.println(scale.read());
+  Serial.println("No ponga ningún objeto sobre la balanza");
+  Serial.println("Destarando...");
+  scale.set_scale(); //La escala por defecto es 1
+  scale.tare(20);  //El peso actual es considerado Tara.
+  Serial.println("Coloque un peso conocido:");
+
 }
 
 void loop() {
 
   if (scale.is_ready()) {
-    long reading = scale.read();
-    Serial.print("HX711 reading: ");
-    Serial.println(reading);
+    Serial.print("Valor de lectura: ");
+    Serial.println(scale.get_value(10), 0);
+    delay(100);
   } else {
     Serial.println("HX711 not found.");
   }
 
   delay(500);
-  
+
 }
