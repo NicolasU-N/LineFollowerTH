@@ -142,12 +142,12 @@ float KP = 0.82;  //constante proporcional 0.25
 float KD = 8.5;   //constante derivativa
 float KI = 0.001; //constante integral
 
-int vel = 185; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
+int vel = 150; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
 //int velrecta = 255; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
 //int velcurva = 150; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
 
-int veladelante = 250; //VELOCIDAD DEL FRENO DIRECCIÓN ADELANTE
-int velatras = 240;    //VELOCIDAD DEL FRENO DIRECCIÓN ATRÁS
+int veladelante = 235; //VELOCIDAD DEL FRENO DIRECCIÓN ADELANTE
+int velatras = 230;    //VELOCIDAD DEL FRENO DIRECCIÓN ATRÁS
 // --------------------------------------
 
 // -------------------------------------- SENSORES
@@ -392,6 +392,10 @@ void setup()
   //TERMINAR SECUENCIA
   PORTL |= (1 << PORTL5); // VERDE BTN EMERGENCY
 
+  //ACTVAR VENTILADOR
+  DDRB |= (1 << DDB2);
+  PORTB |= (1 << PORTB2);
+
   sei();
 }
 
@@ -399,15 +403,16 @@ void loop()
 {
 
   static unsigned long previousMillis1 = 0;
-  if ((millis() - previousMillis1) > 1000)
+  if ((millis() - previousMillis1) > 300)
   {
     //------------DO
-    //readUltrasonicSen();
+    readUltrasonicSen();
     //readLoadCell();
-
     //readDisIrSen();
 
-    previousMillis1 += 1000;
+    readVoltEmergency();
+
+    previousMillis1 += 300;
   }
 
   static unsigned long previousMillis3 = 0;
@@ -428,8 +433,6 @@ void loop()
 
     //readVoltage(); // LEER VOLTAJE BATERIA
 
-    readVoltEmergency();
-
     previousMillis3 += 100;
   }
 
@@ -448,9 +451,16 @@ void loop()
 
       Serial.println("::::::::::::::::::::::::::: FUERA DE WHILE");
 
-      if (disIrSenValue[0] > 130 || disIrSenValue[1] > 130)
+      if (((disIrSenValue[0] > 50) && (disIrSenValue[0] < 75)) || ((disIrSenValue[1] > 130) && (disIrSenValue[1] < 160)) || ((distUltra[0] > 50) && (distUltra[0] < 75)) || ((distUltra[2] > 50) && (distUltra[2] < 75)) || ((distUltra[5] > 50) && (distUltra[5] < 75)))
       {
-        motor_stop();
+        state = STOP;
+        motores(-245, -245);
+        PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
+        PORTL |= (1 << PORTL7);  // ENCENDIDO PITO // Activado
+        _delay_ms(200);
+        PORTL &= ~(1 << PORTL7);
+        PORTL |= (1 << PORTL6);
+        _delay_ms(200);
       }
       else
       {
@@ -522,9 +532,17 @@ void loop()
       //TODO: implementar funcion para girar cuando detecta marcas
     }
 */
-    if (disIrSenValue[0] > 130 || disIrSenValue[1] > 130) // Adelante || ATRAS
+    if (((disIrSenValue[0] > 50) && (disIrSenValue[0] < 75)) || ((disIrSenValue[1] > 130) && (disIrSenValue[1] < 160)) || ((distUltra[0] > 50) && (distUltra[0] < 75)) || ((distUltra[2] > 50) && (distUltra[2] < 75)) || ((distUltra[5] > 50) && (distUltra[5] < 75)))
     {
-      motor_stop();
+      //motor_stop();
+      state = STOP;
+      motores(-245, -245);
+      PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
+      PORTL |= (1 << PORTL7);  // ENCENDIDO PITO // Activado
+      _delay_ms(200);
+      PORTL &= ~(1 << PORTL7);
+      PORTL |= (1 << PORTL6);
+      _delay_ms(200);
     }
     else
     {
@@ -535,10 +553,12 @@ void loop()
       Serial.print(posicion);
       Serial.println("");
 
-      if (posicion > 0 && posicion <= 250) // Detecta linea
+      if (lineSenFront[4] == 1 && lineSenFront[5] == 1) // Detecta linea
       {
-        state = STOP;
 
+        motores(veladelante, -velatras);
+        _delay_ms(500);
+        state = STOP;
         PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
         PORTL |= (1 << PORTL7);  // ENCENDIDO PITO // Activado
       }
@@ -577,9 +597,10 @@ void loop()
 void readVoltEmergency()
 {
   uint16_t motlev = analogRead(MOTLEVEL);
+  //Serial.println(motlev);
 
   // ------------------------------- FUNCTION MEDIR BTN EMERGENCY
-  if (motlev > 820)
+  if (motlev > 770)
   {
     PORTL |= (1 << PORTL5); // EL BTN EMERGENCY SUELTO VERDE
   }
@@ -1068,13 +1089,12 @@ void readDisIrSen()
 {
   disIrSenValue[0] = analogRead(IRDISF); // leer dis front
   disIrSenValue[1] = analogRead(IRDISB); // leer dis back
-  /*
+
   Serial.print("----> DIS IR: ");
   Serial.print(disIrSenValue[0]);
   Serial.print("---");
   Serial.print(disIrSenValue[1]);
   Serial.println("");
-*/
 }
 
 void readUltrasonicSen()
