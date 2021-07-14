@@ -49,6 +49,10 @@ Physical Pin      Arduino Pin    Port Pin     Function
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <HX711.h>
+#include "SingleEMAFilterLib.h"
+
+SingleEMAFilter<int> singleEMAFilter1(0.2);
+SingleEMAFilter<int> singleEMAFilter2(0.2);
 
 // ------------- HX711
 #define LOADCELL_DOUT_PIN 52
@@ -113,9 +117,9 @@ LiquidCrystal_I2C lcd(0x27, 20, 4); // set the LCD address to 0x27 for a 16 char
 
 uint8_t state = 0;
 
-boolean linestatus = true; //true->negra | false->blanca
+boolean linestatus = true; // true->negra | false->blanca
 
-boolean chargeFlag = false;
+boolean chargeFlag = false; //false -> no necesita carga true -> necesita caraga
 
 // ------------------- Arranque y parada
 int fadeValue;
@@ -131,7 +135,7 @@ volatile byte lineSenFront[6];
 volatile float distUltra[6];
 
 // ------------------- Sensores IR distancia
-volatile uint16_t disIrSenValue[2];
+volatile int disIrSenValue[2];
 
 // ------------------- HX711
 HX711 hx711;
@@ -142,7 +146,7 @@ float KP = 0.82;  //constante proporcional 0.25
 float KD = 8.5;   //constante derivativa
 float KI = 0.001; //constante integral
 
-int vel = 150; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
+int vel = 180; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
 //int velrecta = 255; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
 //int velcurva = 150; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
 
@@ -165,15 +169,19 @@ int diferencial = 0;
 int last_prop;
 int setpoint = 350; // Mitad de sensores
 
-boolean flagFuncArranque = true; // TRUE cuando no corre el arranque FALSE cuando ya lo corre
-
-boolean flagArrStopAuto = true; // TRUE cuando arranque stop es auto False Cuando se para por btn
-
 // datos para la integral
 int errors[6];
 
+// -------------------------------------- BANDERAS
+boolean flagFuncArranque = true; // TRUE  cuando no corre el arranque  FALSE cuando ya lo corre
+boolean flagArrStopAuto = true;  // TRUE  cuando arranque stop es auto FALSE Cuando se para por btn
+boolean flagObstaculo = false;   // FALSE cuando no hay obstaculo      TRUE cuando hay obstaculo
+// --------------------------------------
+
 // ------------------- INICIALIZAR FUNCIONES
 int funcPwm(int &t);
+
+void detectarObstaculo();
 
 void motores(int izq, int der);
 void motor_stop();
@@ -190,6 +198,7 @@ void initLCDi();
 
 void PID();
 int calcPosicion();
+float mapf(float x, float in_min, float in_max, float out_min, float out_max);
 
 ISR(INT2_vect) //
 {
@@ -200,17 +209,6 @@ ISR(INT2_vect) //
   {
     // ----------------- DO
 
-    /*
-  if (chargeFlag) //Si necesita carga entonces
-  {
-    chargeFlag = false; // Estado es STOP restablecemos carga
-    PWM_off();
-    state = STOP;
-  }
-  else
-  {
-  }
-  */
     Serial.println("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$------------------------ STOPPPPPPPPP");
 
     PWM_off();
@@ -239,20 +237,24 @@ ISR(INT3_vect)
   {
     // ----------------- DO
 
-    /*
-  if (chargeFlag) //Si necesita carga entonces
-  {
-    PWM_on();
-    state = CHARGE; // Estado es CHARGE
-  }
-  else
-  {
-  }
-  */
-    Serial.println("#######################################------------------------ BACKBBBBBBB");
+    if (chargeFlag) //Si necesita carga entonces
+    {
+      PWM_off();
+      state = STOP; // Estado es CHARGE
 
-    PWM_on();
-    state = BACKB;
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print(" BATERÍA BAJA ");
+      lcd.setCursor(0, 1);
+      lcd.print(" CARGAR BATERÍAS ");
+    }
+    else
+    {
+      Serial.println("#######################################------------------------ BACKBBBBBBB");
+
+      PWM_on();
+      state = BACKB;
+    }
   }
   lastintetime1 = interruptiontime1;
 }
@@ -265,10 +267,24 @@ ISR(INT4_vect)
   if (interruptiontime - lastintetime > 200)
   {
 
-    Serial.println("--------------------------------------------------------- BACKFFFFFF");
+    if (chargeFlag) //Si necesita carga entonces
+    {
+      PWM_off();
+      state = STOP; // Estado es CHARGE
 
-    PWM_on();
-    state = BACKF;
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print(" BATERÍA BAJA ");
+      lcd.setCursor(0, 1);
+      lcd.print(" CARGAR BATERÍAS ");
+    }
+    else
+    {
+      Serial.println("--------------------------------------------------------- BACKFFFFFF");
+
+      PWM_on();
+      state = BACKF;
+    }
   }
   lastintetime = interruptiontime;
 }
@@ -406,7 +422,6 @@ void loop()
   if ((millis() - previousMillis0) > 1000)
   {
     //------------DO
-
     //readLoadCell();
     //readDisIrSen();
 
@@ -419,9 +434,12 @@ void loop()
   if ((millis() - previousMillis1) > 300)
   {
     //------------DO
-    readUltrasonicSen();
-    //readLoadCell();
+    //readUltrasonicSen();
     //readDisIrSen();
+
+    //readLoadCell();
+
+    detectarObstaculo();
 
     readVoltEmergency();
 
@@ -460,7 +478,7 @@ void loop()
     {
       //Serial.println("::::::::::::::::::::::::::: FUERA DE WHILE");
 
-      if (((disIrSenValue[0] > 50) && (disIrSenValue[0] < 75)) || ((disIrSenValue[1] > 130) && (disIrSenValue[1] < 160)) || ((distUltra[0] > 50) && (distUltra[0] < 75)) || ((distUltra[2] > 50) && (distUltra[2] < 75)) || ((distUltra[5] > 50) && (distUltra[5] < 75)))
+      if (flagObstaculo)
       {
         state = STOP;
         motores(-245, -245);
@@ -501,11 +519,11 @@ void loop()
 
     //ESTADO CUANDO PRESIONA BOTONERA DELANTERA
 
-    if (((disIrSenValue[0] > 50) && (disIrSenValue[0] < 75)) || ((disIrSenValue[1] > 130) && (disIrSenValue[1] < 160)) || ((distUltra[0] > 50) && (distUltra[0] < 75)) || ((distUltra[2] > 50) && (distUltra[2] < 75)) || ((distUltra[5] > 50) && (distUltra[5] < 75)))
+    if (flagObstaculo)
     {
       //motor_stop();
       state = STOP;
-      motores(-245, -245);
+      motores(-200, -200);
       PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
       PORTL |= (1 << PORTL7);  // ENCENDIDO PITO // Activado
       _delay_ms(200);
@@ -523,7 +541,6 @@ void loop()
 
       if (lineSenFront[4] == 1 && lineSenFront[5] == 1) // Detecta linea
       {
-
         motores(veladelante, -velatras);
         _delay_ms(500);
         state = STOP;
@@ -541,9 +558,13 @@ void loop()
   case STOP:
 
     //Serial.println("STOPPPPPP");
-    PWM_off();
+    //if (chargeFlag)
+    //{
+    //  lcd.setCursor(7, 0);
+    //}
 
     motor_stop();
+    PWM_off();
 
     PORTH &= ~(1 << PWMIZQ0); // LOW Y OTRO HIGH ES PARA ATRAS
     PORTH &= ~(1 << PWMIZQ1);
@@ -557,7 +578,9 @@ void loop()
 
     // RESETEAR FLAG SECUENCIA DE ARRANQUE
     flagFuncArranque = true;
+    flagObstaculo = false;
     fadeValue = 0;
+    velPwm = 0; // SIN CONTROL
 
     break;
   }
@@ -1042,11 +1065,10 @@ void readLoadCell()
 */
 void readVoltage()
 {
-  uint16_t read = analogRead(BATTLEVEL);
-  uint16_t level = map(read, 0, 1023, 0, 4700); //CAMBIAR NIVEL DE VOLTAJE
+  float read = (float)analogRead(BATTLEVEL);
+  float level = mapf(read, 0, 845.0, 0, 12.93); //CAMBIAR NIVEL DE VOLTAJE
 
-  /*
-  if (level <= 3900)
+  if (level <= 12)
   {
     chargeFlag = true;
   }
@@ -1054,10 +1076,50 @@ void readVoltage()
   {
     chargeFlag = false;
   }
-*/
 
-  Serial.print("-----> NIVEL DE BAT: ");
-  Serial.println(read); // level
+  //Serial.print("-----> NIVEL DE BAT: ");
+  //Serial.println(level); // level
+}
+
+/*
+  @brief Funcion map con punto flotante
+*/
+float mapf(float x, float in_min, float in_max, float out_min, float out_max)
+{
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
+void detectarObstaculo()
+{
+  readDisIrSen();
+  readUltrasonicSen();
+
+  //--------------------------------------------------------------------------- Detectar ir sensor
+  if ((disIrSenValue[0] > 30) && (disIrSenValue[0] < 40))
+  {
+    flagObstaculo = true;
+  }
+
+  if ((disIrSenValue[1] > 95) && (disIrSenValue[1] < 120))
+  {
+    flagObstaculo = true;
+  }
+
+  //--------------------------------------------------------------------------- Detectar ultrasonic sensor
+  if ((distUltra[0] > 50) && (distUltra[0] < 75))
+  {
+    flagObstaculo = true;
+  }
+
+  if ((distUltra[2] > 50) && (distUltra[2] < 75))
+  {
+    flagObstaculo = true;
+  }
+
+  if ((distUltra[5] > 50) && (distUltra[5] < 75))
+  {
+    flagObstaculo = true;
+  }
 }
 
 /*
@@ -1065,8 +1127,14 @@ void readVoltage()
 */
 void readDisIrSen()
 {
-  disIrSenValue[0] = analogRead(IRDISF); // leer dis front
-  disIrSenValue[1] = analogRead(IRDISB); // leer dis back
+  // leer dis front
+  //disIrSenValue[1] = analogRead(IRDISB); // leer dis back
+
+  // Calcular filtro
+  singleEMAFilter1.AddValue(analogRead(IRDISF));
+  disIrSenValue[0] = singleEMAFilter1.GetLowPass();
+  singleEMAFilter2.AddValue(analogRead(IRDISB));
+  disIrSenValue[1] = singleEMAFilter2.GetLowPass();
 
   Serial.print("----> DIS IR: ");
   Serial.print(disIrSenValue[0]);
