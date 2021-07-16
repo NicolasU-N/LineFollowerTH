@@ -48,15 +48,15 @@ Physical Pin      Arduino Pin    Port Pin     Function
 #include <PWM.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
-#include <HX711.h>
+//#include <HX711.h>
 #include "SingleEMAFilterLib.h"
 
-SingleEMAFilter<int> singleEMAFilter1(0.2);
-SingleEMAFilter<int> singleEMAFilter2(0.2);
+SingleEMAFilter<int> singleEMAFilter1(0.3); // 0.2
+SingleEMAFilter<int> singleEMAFilter2(0.3); // 0.2
 
 // ------------- HX711
-#define LOADCELL_DOUT_PIN 52
-#define LOADCELL_SCK_PIN 50
+//#define LOADCELL_DOUT_PIN 52
+//#define LOADCELL_SCK_PIN 50
 
 // ------------- LCD ------------------
 LiquidCrystal_I2C lcd(0x27, 20, 4); // set the LCD address to 0x27 for a 16 chars and 2 line display
@@ -138,7 +138,7 @@ volatile float distUltra[6];
 volatile int disIrSenValue[2];
 
 // ------------------- HX711
-HX711 hx711;
+//HX711 hx711;
 long loadcellvalue;
 
 // -------------------------------------- PID
@@ -178,6 +178,13 @@ boolean flagArrStopAuto = true;  // TRUE  cuando arranque stop es auto FALSE Cua
 boolean flagObstaculo = false;   // FALSE cuando no hay obstaculo      TRUE cuando hay obstaculo
 // --------------------------------------
 
+//--------------------------------------- FLAG PESO
+String str;
+float pesoCelda;
+
+//--------------------------------------- BATERIA
+float level;
+
 // ------------------- INICIALIZAR FUNCIONES
 int funcPwm(int &t);
 
@@ -195,6 +202,9 @@ void readUltrasonicSen();
 void readDisIrSen();
 void readSensLinea();
 void initLCDi();
+
+void printLcdRecorrido();
+void printLcdStop();
 
 void PID();
 int calcPosicion();
@@ -251,7 +261,7 @@ ISR(INT3_vect)
     else
     {
       Serial.println("#######################################------------------------ BACKBBBBBBB");
-
+      //lcd.clear();
       PWM_on();
       state = BACKB;
     }
@@ -323,6 +333,7 @@ void setup()
 
   cli();
   Serial.begin(115200);
+  Serial2.begin(9600);
 
   Serial.println("Start");
 
@@ -335,7 +346,8 @@ void setup()
 
   //-----------ENTRADA SENSORES DE LINEA
   DDRJ &= ~((1 << DDJ1) | (1 << DDJ0));
-  DDRH &= ~((1 << DDH1) | (1 << DDH0));
+  //DDRH &= ~((1 << DDH1) | (1 << DDH0)); 16 y 17
+  DDRB &= ~((1 << DDB1) | (1 << DDB0)); // 52 Y 53
 
   DDRA &= ~(0xFF); // INPUTS SENSORES DE LINEA
 
@@ -413,6 +425,8 @@ void setup()
   PORTB |= (1 << PORTB2);
 
   sei();
+
+  lcd.clear();
 }
 
 void loop()
@@ -422,7 +436,7 @@ void loop()
   if ((millis() - previousMillis0) > 1000)
   {
     //------------DO
-    //readLoadCell();
+    readLoadCell();
     //readDisIrSen();
 
     readVoltage(); // LEER VOLTAJE BATERIA
@@ -439,7 +453,7 @@ void loop()
 
     //readLoadCell();
 
-    detectarObstaculo();
+    detectarObstaculo(); //////////////////////
 
     readVoltEmergency();
 
@@ -473,6 +487,12 @@ void loop()
     if (flagFuncArranque)
     {
       motor_CW();
+      static unsigned long previousMillis4 = 0;
+      if ((millis() - previousMillis4) > 1000)
+      {
+        printLcdRecorrido();
+        previousMillis4 += 1000;
+      }
     }
     else
     {
@@ -481,7 +501,7 @@ void loop()
       if (flagObstaculo)
       {
         state = STOP;
-        motores(-245, -245);
+        motores(-230, -230);
         PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
         PORTL |= (1 << PORTL7);  // ENCENDIDO PITO // Activado
         _delay_ms(200);
@@ -490,6 +510,14 @@ void loop()
       }
       else
       {
+
+        static unsigned long previousMillis4 = 0;
+        if ((millis() - previousMillis4) > 1000)
+        {
+          printLcdRecorrido();
+          previousMillis4 += 1000;
+        }
+
         readSensLinea();
         posicion = calcPosicion();
 
@@ -532,6 +560,14 @@ void loop()
     }
     else
     {
+
+      static unsigned long previousMillis4 = 0;
+      if ((millis() - previousMillis4) > 1000)
+      {
+        printLcdRecorrido();
+        previousMillis4 += 1000;
+      }
+
       readSensLinea();
       posicion = calcPosicion();
 
@@ -542,13 +578,16 @@ void loop()
       if (lineSenFront[4] == 1 && lineSenFront[5] == 1) // Detecta linea
       {
         motores(veladelante, -velatras);
-        _delay_ms(500);
-        state = STOP;
         PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
         PORTL |= (1 << PORTL7);  // ENCENDIDO PITO // Activado
+        _delay_ms(500);
+        state = STOP;
+        lcd.clear();
       }
       else
       {
+        PORTL &= ~(1 << PORTL6);
+        PORTL &= ~(1 << PORTL7); // PITO OFF // ENCENDID LICUADORA
         motores(-velatras, veladelante);
       }
     }
@@ -562,6 +601,13 @@ void loop()
     //{
     //  lcd.setCursor(7, 0);
     //}
+
+    static unsigned long previousMillis4 = 0;
+    if ((millis() - previousMillis4) > 1000)
+    {
+      printLcdStop();
+      previousMillis4 += 1000;
+    }
 
     motor_stop();
     PWM_off();
@@ -580,6 +626,7 @@ void loop()
     flagFuncArranque = true;
     flagObstaculo = false;
     fadeValue = 0;
+
     velPwm = 0; // SIN CONTROL
 
     break;
@@ -618,6 +665,44 @@ void initLCDi()
   lcd.print("SMART CART");
 }
 
+void printLcdRecorrido()
+{
+  lcd.setCursor(0, 0);
+  lcd.print("Peso: ");
+  lcd.setCursor(7, 0);
+  lcd.print(pesoCelda);
+
+  lcd.setCursor(17, 0);
+  lcd.print("KG");
+
+  lcd.setCursor(0, 1);
+  lcd.print("Voltaje: ");
+  lcd.setCursor(10, 1);
+  lcd.print(level);
+
+  lcd.setCursor(4, 3);
+  lcd.print("EN RECORRIDO");
+}
+
+void printLcdStop()
+{
+  lcd.setCursor(0, 0);
+  lcd.print("Peso: ");
+  lcd.setCursor(7, 0);
+  lcd.print(pesoCelda);
+
+  lcd.setCursor(17, 0);
+  lcd.print("KG");
+
+  lcd.setCursor(0, 1);
+  lcd.print("Voltaje: ");
+  lcd.setCursor(10, 1);
+  lcd.print(level);
+
+  lcd.setCursor(6, 3);
+  lcd.print("DETENIDO");
+}
+
 void motor_CW()
 {
   //Serial.println("::::::::::::::::::::::::::: DENTRO DE WHILE");
@@ -638,6 +723,8 @@ void motor_CW()
   }
   else
   {
+    ///////////////////////////////////////////////
+    lcd.clear();
     flagFuncArranque = false;
     flagArrStopAuto = false;
   }
@@ -743,9 +830,9 @@ void readSensLinea()
                                                                                  : 1); // f0
   lineSenFront[1] = ((PINJ & (1 << PINJ0)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
                                                                                  : 1); // f1
-  lineSenFront[2] = ((PINH & (1 << PINH1)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
+  lineSenFront[2] = ((PINB & (1 << PINB1)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
                                                                                  : 1); // f2
-  lineSenFront[3] = ((PINH & (1 << PINH0)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
+  lineSenFront[3] = ((PINB & (1 << PINB0)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
                                                                                  : 1); // f3
   lineSenFront[4] = ((PINL & (1 << PINL1)) > 0 ? linestatus ? 1 : 0 : linestatus ? 0
                                                                                  : 1); // f4
@@ -1046,17 +1133,25 @@ int funcPwm(int &t)
   return (int)2 * exp(0.0108 * t);
 }
 
+/*
+  @brief funcion para leer puerto serial celda de carga
+*/
 void readLoadCell()
 {
-  if (hx711.is_ready())
+  if (Serial2.available())
   {
-    loadcellvalue = hx711.read();
-    Serial.print("HX711 reading: ");
-    Serial.println(loadcellvalue);
-  }
-  else
-  {
-    Serial.println("HX711 not found.");
+
+    str = Serial2.readStringUntil('\n');
+
+    String igual = str.substring(0, 1); // Ignorar el igual
+
+    if (igual.equalsIgnoreCase("="))
+    {
+      pesoCelda = str.substring(1).toFloat();
+    }
+
+    //Serial.print("Valor String: ");
+    //Serial.println(pesoCelda);
   }
 }
 
@@ -1066,9 +1161,9 @@ void readLoadCell()
 void readVoltage()
 {
   float read = (float)analogRead(BATTLEVEL);
-  float level = mapf(read, 0, 845.0, 0, 12.93); //CAMBIAR NIVEL DE VOLTAJE
+  level = mapf(read, 0, 845.0, 0, 12.93); //CAMBIAR NIVEL DE VOLTAJE
 
-  if (level <= 12)
+  if (level < 12)
   {
     chargeFlag = true;
   }
@@ -1106,17 +1201,17 @@ void detectarObstaculo()
   }
 
   //--------------------------------------------------------------------------- Detectar ultrasonic sensor
-  if ((distUltra[0] > 50) && (distUltra[0] < 75))
+  if ((distUltra[0] > 53) && (distUltra[0] < 75))
   {
     flagObstaculo = true;
   }
 
-  if ((distUltra[2] > 50) && (distUltra[2] < 75))
+  if ((distUltra[2] > 53) && (distUltra[2] < 75))
   {
     flagObstaculo = true;
   }
 
-  if ((distUltra[5] > 50) && (distUltra[5] < 75))
+  if ((distUltra[5] > 53) && (distUltra[5] < 75))
   {
     flagObstaculo = true;
   }
@@ -1239,6 +1334,7 @@ void readUltrasonicSen()
 
   //-------------------------------------------------------------------------------
 
+  /*
   // PRINT ARRAY
   Serial.print("-- DISTANCE ULTRASONIC SENSOR: ");
   for (size_t i = 0; i < 6; i++)
@@ -1247,4 +1343,5 @@ void readUltrasonicSen()
     Serial.print("---");
   }
   Serial.println("");
+*/
 }
