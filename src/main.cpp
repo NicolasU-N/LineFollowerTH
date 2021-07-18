@@ -487,6 +487,7 @@ void loop()
     if (flagFuncArranque)
     {
       motor_CW();
+
       static unsigned long previousMillis4 = 0;
       if ((millis() - previousMillis4) > 1000)
       {
@@ -507,6 +508,7 @@ void loop()
         _delay_ms(200);
         PORTL &= ~(1 << PORTL7);
         PORTL |= (1 << PORTL6);
+        lcd.clear();
       }
       else
       {
@@ -557,6 +559,7 @@ void loop()
       _delay_ms(200);
       PORTL &= ~(1 << PORTL7);
       PORTL |= (1 << PORTL6);
+      lcd.clear();
     }
     else
     {
@@ -580,7 +583,7 @@ void loop()
         motores(veladelante, -velatras);
         PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
         PORTL |= (1 << PORTL7);  // ENCENDIDO PITO // Activado
-        _delay_ms(500);
+        _delay_ms(400);
         state = STOP;
         lcd.clear();
       }
@@ -1149,6 +1152,29 @@ void readLoadCell()
     {
       pesoCelda = str.substring(1).toFloat();
     }
+
+    ////////// -------------------------------------------------------------------- VALIDACION DEL PESO
+    if (pesoCelda > 280)
+    {
+      //ENCENCER LUZ SIRENA
+      PORTL &= ~(1 << PORTL6);
+      PORTL &= ~(1 << PORTL7); // PITO OFF
+
+      lcd.setCursor(2, 2);
+      lcd.print("LIMITE DE CARGA");
+
+      state = STOP;
+    }
+    else
+    {
+      //APAGAR LUZ SIRENA
+      PORTL |= (1 << PORTL6);
+      PORTL &= ~(1 << PORTL7); // PITO OFF
+
+      lcd.setCursor(2, 2);
+      lcd.print("                ");
+    }
+    ////////// -------------------------------------------------------------------- VALIDACION DEL PESO
 
     //Serial.print("Valor String: ");
     //Serial.println(pesoCelda);
