@@ -51,8 +51,8 @@ Physical Pin      Arduino Pin    Port Pin     Function
 //#include <HX711.h>
 #include "SingleEMAFilterLib.h"
 
-SingleEMAFilter<int> singleEMAFilter1(0.3); // 0.2
-SingleEMAFilter<int> singleEMAFilter2(0.3); // 0.2
+SingleEMAFilter<int> singleEMAFilter1(0.5); // 0.2
+SingleEMAFilter<int> singleEMAFilter2(0.5); // 0.2
 
 // ------------- HX711
 //#define LOADCELL_DOUT_PIN 52
@@ -146,7 +146,7 @@ float KP = 0.82;  //constante proporcional 0.25
 float KD = 8.5;   //constante derivativa
 float KI = 0.001; //constante integral
 
-int vel = 180; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
+int vel = 189; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
 //int velrecta = 255; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
 //int velcurva = 150; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
 
@@ -176,6 +176,7 @@ int errors[6];
 boolean flagFuncArranque = true; // TRUE  cuando no corre el arranque  FALSE cuando ya lo corre
 boolean flagArrStopAuto = true;  // TRUE  cuando arranque stop es auto FALSE Cuando se para por btn
 boolean flagObstaculo = false;   // FALSE cuando no hay obstaculo      TRUE cuando hay obstaculo
+boolean flagObstaculoIR = false;
 // --------------------------------------
 
 //--------------------------------------- FLAG PESO
@@ -453,7 +454,13 @@ void loop()
 
     //readLoadCell();
 
-    detectarObstaculo(); //////////////////////
+    //detectarObstaculo(); ////////////////////// POR DEPURAR TEMA DE SENORES SIRENA SE ACTIVA
+
+    /*
+    Serial.print(flagObstaculoIR);
+    Serial.print("--------");
+    Serial.println(flagObstaculo);
+    */
 
     readVoltEmergency();
 
@@ -488,11 +495,11 @@ void loop()
     {
       motor_CW();
 
-      static unsigned long previousMillis4 = 0;
-      if ((millis() - previousMillis4) > 1000)
+      static unsigned long previousMillis5 = 0;
+      if ((millis() - previousMillis5) > 1000)
       {
         printLcdRecorrido();
-        previousMillis4 += 1000;
+        previousMillis5 += 1000;
       }
     }
     else
@@ -564,11 +571,11 @@ void loop()
     else
     {
 
-      static unsigned long previousMillis4 = 0;
-      if ((millis() - previousMillis4) > 1000)
+      static unsigned long previousMillis7 = 0;
+      if ((millis() - previousMillis7) > 6000)
       {
         printLcdRecorrido();
-        previousMillis4 += 1000;
+        previousMillis7 += 6000;
       }
 
       readSensLinea();
@@ -605,11 +612,11 @@ void loop()
     //  lcd.setCursor(7, 0);
     //}
 
-    static unsigned long previousMillis4 = 0;
-    if ((millis() - previousMillis4) > 1000)
+    static unsigned long previousMillis6 = 0;
+    if ((millis() - previousMillis6) > 1000)
     {
       printLcdStop();
-      previousMillis4 += 1000;
+      previousMillis6 += 1000;
     }
 
     motor_stop();
@@ -627,7 +634,7 @@ void loop()
 
     // RESETEAR FLAG SECUENCIA DE ARRANQUE
     flagFuncArranque = true;
-    flagObstaculo = false;
+    //flagObstaculo = false;
     fadeValue = 0;
 
     velPwm = 0; // SIN CONTROL
@@ -702,8 +709,8 @@ void printLcdStop()
   lcd.setCursor(10, 1);
   lcd.print(level);
 
-  lcd.setCursor(6, 3);
-  lcd.print("DETENIDO");
+  lcd.setCursor(4, 3);
+  lcd.print("  DETENIDO  ");
 }
 
 void motor_CW()
@@ -1187,7 +1194,7 @@ void readLoadCell()
 void readVoltage()
 {
   float read = (float)analogRead(BATTLEVEL);
-  level = mapf(read, 0, 845.0, 0, 12.93); //CAMBIAR NIVEL DE VOLTAJE
+  level = mapf(read, 0, 855.0, 0, 12.93); //CAMBIAR NIVEL DE VOLTAJE
 
   if (level < 12)
   {
@@ -1216,31 +1223,51 @@ void detectarObstaculo()
   readUltrasonicSen();
 
   //--------------------------------------------------------------------------- Detectar ir sensor
-  if ((disIrSenValue[0] > 30) && (disIrSenValue[0] < 40))
+  if (((disIrSenValue[0] > 50) && (disIrSenValue[0] < 80)) || ((disIrSenValue[1] > 80) && (disIrSenValue[1] < 130))) //-------------------------------------------- CALIBRAR SENSORES
   {
-    flagObstaculo = true;
+    flagObstaculoIR = true;
+  }
+  else
+  {
+    flagObstaculoIR = false;
   }
 
-  if ((disIrSenValue[1] > 95) && (disIrSenValue[1] < 120))
+  /*
+  if () //-------------------------------------------- CALIBRAR SENSORES ULTRASONICOS
   {
-    flagObstaculo = true;
+    flagObstaculoIR = true;
   }
+  */
 
   //--------------------------------------------------------------------------- Detectar ultrasonic sensor
-  if ((distUltra[0] > 53) && (distUltra[0] < 75))
+  if (((distUltra[0] > 30) && (distUltra[0] < 90)) || ((distUltra[2] > 30) && (distUltra[2] < 90)) || ((distUltra[5] > 30) && (distUltra[5] < 90)))
   {
     flagObstaculo = true;
+  }
+  else
+  {
+    flagObstaculo = false;
   }
 
-  if ((distUltra[2] > 53) && (distUltra[2] < 75))
+  /*
+  if
   {
     flagObstaculo = true;
+  }
+  else
+  {
+    flagObstaculo = false; //------------------------------- NO HAY OBSTACULO IZQUIERDA
   }
 
-  if ((distUltra[5] > 53) && (distUltra[5] < 75))
+  if
   {
     flagObstaculo = true;
   }
+  else
+  {
+    flagObstaculo = false; //------------------------------- NO HAY OBSTACULO DERECHA
+  }
+  */
 }
 
 /*
@@ -1257,11 +1284,13 @@ void readDisIrSen()
   singleEMAFilter2.AddValue(analogRead(IRDISB));
   disIrSenValue[1] = singleEMAFilter2.GetLowPass();
 
+  /*
   Serial.print("----> DIS IR: ");
-  Serial.print(disIrSenValue[0]);
+  Serial.print(disIrSenValue[0]); //adelante
   Serial.print("---");
   Serial.print(disIrSenValue[1]);
   Serial.println("");
+  */
 }
 
 void readUltrasonicSen()
@@ -1359,7 +1388,6 @@ void readUltrasonicSen()
   distUltra[5] = distUltra[5] / 58; //13.3511 instead of 58 because the speed of a soundwave in water is far bigger than in air
 
   //-------------------------------------------------------------------------------
-
   /*
   // PRINT ARRAY
   Serial.print("-- DISTANCE ULTRASONIC SENSOR: ");
@@ -1369,5 +1397,5 @@ void readUltrasonicSen()
     Serial.print("---");
   }
   Serial.println("");
-*/
+  */
 }
