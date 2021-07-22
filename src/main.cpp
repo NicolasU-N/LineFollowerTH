@@ -51,8 +51,8 @@ Physical Pin      Arduino Pin    Port Pin     Function
 //#include <HX711.h>
 #include "SingleEMAFilterLib.h"
 
-SingleEMAFilter<int> singleEMAFilter1(0.5); // 0.2
-SingleEMAFilter<int> singleEMAFilter2(0.5); // 0.2
+SingleEMAFilter<int> singleEMAFilter1(0.3); // 0.2
+SingleEMAFilter<int> singleEMAFilter2(0.3); // 0.2
 
 // ------------- HX711
 //#define LOADCELL_DOUT_PIN 52
@@ -142,16 +142,16 @@ volatile int disIrSenValue[2];
 long loadcellvalue;
 
 // -------------------------------------- PID
-float KP = 0.82;  //constante proporcional 0.25
+float KP = 0.95;  //constante proporcional 0.25     .83 con menos de 190      ||||||||||||||||.95 para 190
 float KD = 8.5;   //constante derivativa
 float KI = 0.001; //constante integral
 
-int vel = 189; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
+int vel = 190; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
 //int velrecta = 255; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
 //int velcurva = 150; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
 
-int veladelante = 235; //VELOCIDAD DEL FRENO DIRECCIÓN ADELANTE
-int velatras = 230;    //VELOCIDAD DEL FRENO DIRECCIÓN ATRÁS
+int veladelante = 232; //VELOCIDAD DEL FRENO DIRECCIÓN ADELANTE
+int velatras = 225;    //VELOCIDAD DEL FRENO DIRECCIÓN ATRÁS
 // --------------------------------------
 
 // -------------------------------------- SENSORES
@@ -211,6 +211,8 @@ void PID();
 int calcPosicion();
 float mapf(float x, float in_min, float in_max, float out_min, float out_max);
 
+void compensacionVelocidad();
+
 ISR(INT2_vect) //
 {
   static unsigned long lastintetime = 0;
@@ -222,7 +224,6 @@ ISR(INT2_vect) //
 
     Serial.println("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$------------------------ STOPPPPPPPPP");
 
-    PWM_off();
     state = STOP;
 
     //APAGAR LUZ SIRENA
@@ -230,10 +231,12 @@ ISR(INT2_vect) //
     PORTL &= ~(1 << PORTL7); // PITO OFF
 
     flagArrStopAuto = false; // ESTADO DE ARRANQUE AUTO
+    flagFuncArranque = true; // Arranque suave
     fadeValue = 0;
+    velPwm = 0;
 
-    setDutyPWMIZQ(0); //STOP
-    setDutyPWMDER(0);
+    motores(0, 0);
+    PWM_off();
   }
   lastintetime = interruptiontime;
 }
@@ -277,7 +280,6 @@ ISR(INT4_vect)
   //si la interrupcion dura menos de 200ms entonces es un rebote (ignorar)
   if (interruptiontime - lastintetime > 200)
   {
-
     if (chargeFlag) //Si necesita carga entonces
     {
       PWM_off();
@@ -454,13 +456,22 @@ void loop()
 
     //readLoadCell();
 
-    //detectarObstaculo(); ////////////////////// POR DEPURAR TEMA DE SENORES SIRENA SE ACTIVA
+    detectarObstaculo(); ////////////////////// POR DEPURAR TEMA DE SENORES SIRENA SE ACTIVA
+
+    Serial.println(disIrSenValue[0]); // ATRASSSS
+    //Serial.print("   ");
+    //Serial.println(disIrSenValue[1]); // ADELANTE
+    //Serial.print(flagObstaculoIR);
 
     /*
-    Serial.print(flagObstaculoIR);
+    Serial.println(distUltra[0]);
+    Serial.println(distUltra[2]);
+    Serial.println(distUltra[5]);
+
+    
     Serial.print("--------");
     Serial.println(flagObstaculo);
-    */
+*/
 
     readVoltEmergency();
 
@@ -478,6 +489,7 @@ void loop()
       if (lineSenFront[0] == 1 and lineSenFront[1] == 1 and lineSenFront[2] == 1 and lineSenFront[3] == 1 and lineSenFront[4] == 1 and lineSenFront[5] == 1)
       {
         state = STOP;
+        Serial.println("STOP AUTOMATICO");
         flagArrStopAuto = true;
       }
     }
@@ -488,6 +500,7 @@ void loop()
   switch (state)
   {
   case BACKF:
+    PWM_on();
     //motor_CW();
     //ESTADO CUANDO PRESIONA BOTONERA TRASERA
 
@@ -506,15 +519,21 @@ void loop()
     {
       //Serial.println("::::::::::::::::::::::::::: FUERA DE WHILE");
 
-      if (flagObstaculo)
+      if (flagObstaculo or flagObstaculoIR)
       {
-        state = STOP;
-        motores(-230, -230);
+        //state = STOP;
+        //motores(-180, -180);
+        Serial.println("DETECCION DE OBSTACULO");
+        motor_stop();
+        motores(0, 0);
         PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
         PORTL |= (1 << PORTL7);  // ENCENDIDO PITO // Activado
         _delay_ms(200);
         PORTL &= ~(1 << PORTL7);
         PORTL |= (1 << PORTL6);
+
+        _delay_ms(4000); //--------------------------------------------Espera para ver si se retiro el obstaculo
+
         lcd.clear();
       }
       else
@@ -526,6 +545,9 @@ void loop()
           printLcdRecorrido();
           previousMillis4 += 1000;
         }
+
+        PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
+        PORTL &= ~(1 << PORTL7); // ENCENDIDO PITO // off
 
         readSensLinea();
         posicion = calcPosicion();
@@ -556,16 +578,21 @@ void loop()
 
     //ESTADO CUANDO PRESIONA BOTONERA DELANTERA
 
-    if (flagObstaculo)
+    if (flagObstaculo or flagObstaculoIR)
     {
-      //motor_stop();
-      state = STOP;
-      motores(-200, -200);
+      Serial.println("DETECCION DE OBSTACULO");
+      motor_stop();
+      //state = STOP;
+      //motores(-180, -180);
+      motores(0, 0);
       PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
       PORTL |= (1 << PORTL7);  // ENCENDIDO PITO // Activado
       _delay_ms(200);
       PORTL &= ~(1 << PORTL7);
       PORTL |= (1 << PORTL6);
+
+      _delay_ms(4000); //--------------------------------------------Espera para ver si se retiro el obstaculo
+
       lcd.clear();
     }
     else
@@ -605,21 +632,15 @@ void loop()
     break;
 
   case STOP:
-
-    //Serial.println("STOPPPPPP");
-    //if (chargeFlag)
-    //{
-    //  lcd.setCursor(7, 0);
-    //}
-
     static unsigned long previousMillis6 = 0;
-    if ((millis() - previousMillis6) > 1000)
+    if ((millis() - previousMillis6) > 800)
     {
       printLcdStop();
-      previousMillis6 += 1000;
+      previousMillis6 += 800;
     }
 
     motor_stop();
+    motores(0, 0);
     PWM_off();
 
     PORTH &= ~(1 << PWMIZQ0); // LOW Y OTRO HIGH ES PARA ATRAS
@@ -634,9 +655,10 @@ void loop()
 
     // RESETEAR FLAG SECUENCIA DE ARRANQUE
     flagFuncArranque = true;
-    //flagObstaculo = false;
-    fadeValue = 0;
+    flagObstaculo = false;
+    flagObstaculoIR = false;
 
+    fadeValue = 0;
     velPwm = 0; // SIN CONTROL
 
     break;
@@ -727,6 +749,12 @@ void motor_CW()
   PORTE |= (1 << PWMDER1);
   PORTG &= ~(1 << PWMDER0);
 
+  velPwm = funcPwm(fadeValue);
+  //Serial.println(velPwm);
+
+  setDutyPWMIZQ(velPwm);
+  setDutyPWMDER(velPwm);
+
   if (fadeValue < 447)
   {
     fadeValue++; // Valor max para 252 pwm
@@ -737,16 +765,12 @@ void motor_CW()
     lcd.clear();
     flagFuncArranque = false;
     flagArrStopAuto = false;
+
+    // PROBAR BAJANDO VARIABLE A 0 Y MODIFICAR LAS ISR
   }
 
-  velPwm = funcPwm(fadeValue);
-  //Serial.println(velPwm);
-
-  setDutyPWMIZQ(velPwm);
-  setDutyPWMDER(velPwm);
-
   Serial.println("CW");
-  delay(10);
+  delay(2);
 }
 
 /*
@@ -958,6 +982,7 @@ int calcPosicion()
     pos = 600; // Sale por derecha
   }
   lastpos = pos;
+
   return pos;
 }
 
@@ -1128,10 +1153,12 @@ void motores(int izq, int der)
   }
   */
 
+  /*
   Serial.print(izq);
   Serial.print("     |     ");
   Serial.print(der);
   Serial.println("");
+*/
 }
 
 /*
@@ -1143,6 +1170,50 @@ int funcPwm(int &t)
   return (int)2 * exp(0.0108 * t);
 }
 
+void compensacionVelocidad()
+{
+  ////////// -------------------------------------------------------------------- VALIDACION DEL PESO
+  if (pesoCelda > 250)
+  {
+    //ENCENCER LUZ SIRENA
+    PORTL &= ~(1 << PORTL6);
+    PORTL &= ~(1 << PORTL7); // PITO OFF
+
+    lcd.setCursor(2, 2);
+    lcd.print("LIMITE DE CARGA");
+    delay(1000);
+    state = STOP;
+  }
+  else
+  {
+
+    if (pesoCelda > 50 and pesoCelda < 100)
+    {
+      KP = 0.95;
+      vel = 193;
+      veladelante = 235;
+      velatras = 230;
+    }
+
+    if (pesoCelda > 100 and pesoCelda < 150)
+    {
+      KP = 1.0;
+      vel = 198;
+      veladelante = 242;
+      velatras = 235;
+    }
+
+    if (pesoCelda > 150 and pesoCelda < 250)
+    {
+      KP = 1.25;
+      vel = 230;
+      veladelante = 250;
+      velatras = 245;
+    }
+  }
+  ////////// -------------------------------------------------------------------- VALIDACION DEL PESO
+}
+
 /*
   @brief funcion para leer puerto serial celda de carga
 */
@@ -1150,42 +1221,25 @@ void readLoadCell()
 {
   if (Serial2.available())
   {
-
     str = Serial2.readStringUntil('\n');
 
     String igual = str.substring(0, 1); // Ignorar el igual
 
     if (igual.equalsIgnoreCase("="))
     {
-      pesoCelda = str.substring(1).toFloat();
+      float pesoCelda1;
+      pesoCelda1 = str.substring(1).toFloat();
+      if (pesoCelda1 != 0)
+      {
+        pesoCelda = pesoCelda1 - 47; ///////////////////////////RESTAMOS PESO DE CANASTA!!
+      }
     }
-
-    ////////// -------------------------------------------------------------------- VALIDACION DEL PESO
-    if (pesoCelda > 280)
-    {
-      //ENCENCER LUZ SIRENA
-      PORTL &= ~(1 << PORTL6);
-      PORTL &= ~(1 << PORTL7); // PITO OFF
-
-      lcd.setCursor(2, 2);
-      lcd.print("LIMITE DE CARGA");
-
-      state = STOP;
-    }
-    else
-    {
-      //APAGAR LUZ SIRENA
-      PORTL |= (1 << PORTL6);
-      PORTL &= ~(1 << PORTL7); // PITO OFF
-
-      lcd.setCursor(2, 2);
-      lcd.print("                ");
-    }
-    ////////// -------------------------------------------------------------------- VALIDACION DEL PESO
 
     //Serial.print("Valor String: ");
     //Serial.println(pesoCelda);
   }
+
+  compensacionVelocidad();
 }
 
 /*
@@ -1223,7 +1277,8 @@ void detectarObstaculo()
   readUltrasonicSen();
 
   //--------------------------------------------------------------------------- Detectar ir sensor
-  if (((disIrSenValue[0] > 50) && (disIrSenValue[0] < 80)) || ((disIrSenValue[1] > 80) && (disIrSenValue[1] < 130))) //-------------------------------------------- CALIBRAR SENSORES
+
+  if (((disIrSenValue[0] > 20) && (disIrSenValue[0] < 150))) //-------------------------------------------- CALIBRAR SENSORES || ((disIrSenValue[1] > 125) && (disIrSenValue[1] < 220))
   {
     flagObstaculoIR = true;
   }
@@ -1233,14 +1288,19 @@ void detectarObstaculo()
   }
 
   /*
-  if () //-------------------------------------------- CALIBRAR SENSORES ULTRASONICOS
+  if (((disIrSenValue[1] > 125) && (disIrSenValue[1] < 220))) //-------------------------------------------- CALIBRAR SENSORES
   {
     flagObstaculoIR = true;
   }
+  else
+  {
+    flagObstaculoIR = false;
+  }
   */
 
+  /*
   //--------------------------------------------------------------------------- Detectar ultrasonic sensor
-  if (((distUltra[0] > 30) && (distUltra[0] < 90)) || ((distUltra[2] > 30) && (distUltra[2] < 90)) || ((distUltra[5] > 30) && (distUltra[5] < 90)))
+  if (((distUltra[0] > 30) && (distUltra[0] < 140)) || ((distUltra[2] > 30) && (distUltra[2] < 50))) //|| ((distUltra[5] > 30) && (distUltra[5] < 45))
   {
     flagObstaculo = true;
   }
@@ -1248,26 +1308,7 @@ void detectarObstaculo()
   {
     flagObstaculo = false;
   }
-
-  /*
-  if
-  {
-    flagObstaculo = true;
-  }
-  else
-  {
-    flagObstaculo = false; //------------------------------- NO HAY OBSTACULO IZQUIERDA
-  }
-
-  if
-  {
-    flagObstaculo = true;
-  }
-  else
-  {
-    flagObstaculo = false; //------------------------------- NO HAY OBSTACULO DERECHA
-  }
-  */
+*/
 }
 
 /*
@@ -1278,11 +1319,13 @@ void readDisIrSen()
   // leer dis front
   //disIrSenValue[1] = analogRead(IRDISB); // leer dis back
 
-  // Calcular filtro
-  singleEMAFilter1.AddValue(analogRead(IRDISF));
+  // Calcular distancia y filtro
+  singleEMAFilter1.AddValue((6787 / (analogRead(IRDISF) - 3)) - 4); //analogRead(IRDISF)
+
   disIrSenValue[0] = singleEMAFilter1.GetLowPass();
-  singleEMAFilter2.AddValue(analogRead(IRDISB));
-  disIrSenValue[1] = singleEMAFilter2.GetLowPass();
+
+  //singleEMAFilter2.AddValue(); //analogRead(IRDISB) // SENSOR TRASERO NO ES NECESARIO
+  //disIrSenValue[1] = singleEMAFilter2.GetLowPass();
 
   /*
   Serial.print("----> DIS IR: ");
@@ -1295,6 +1338,7 @@ void readDisIrSen()
 
 void readUltrasonicSen()
 {
+
   //-------------------------------------------------------------------------------
   PORTC &= ~(1 << TRIG1BACKDER);
   //digitalWrite(TRIG, LOW); // Set the trigger pin to low for 2uS
@@ -1311,6 +1355,7 @@ void readUltrasonicSen()
   distUltra[0] = distUltra[0] / 58; //13.3511 instead of 58 because the speed of a soundwave in water is far bigger than in air
 
   //-------------------------------------------------------------------------------
+  /*
   //-------------------------------------------------------------------------------
   PORTC &= ~(1 << TRIG2BACKIZQ);
   //digitalWrite(TRIG, LOW); // Set the trigger pin to low for 2uS
@@ -1326,6 +1371,7 @@ void readUltrasonicSen()
 
   distUltra[1] = distUltra[1] / 58; //13.3511 instead of 58 because the speed of a soundwave in water is far bigger than in air
   //-------------------------------------------------------------------------------
+  */
   //-------------------------------------------------------------------------------
   PORTC &= ~(1 << TRIG3LATIZQ);
   //digitalWrite(TRIG, LOW); // Set the trigger pin to low for 2uS
@@ -1341,6 +1387,7 @@ void readUltrasonicSen()
 
   distUltra[2] = distUltra[2] / 58; //13.3511 instead of 58 because the speed of a soundwave in water is far bigger than in air
   //-------------------------------------------------------------------------------
+  /*
   //-------------------------------------------------------------------------------
   PORTC &= ~(1 << TRIG4FRONTLATIZQ);
   //digitalWrite(TRIG, LOW); // Set the trigger pin to low for 2uS
@@ -1372,6 +1419,7 @@ void readUltrasonicSen()
   distUltra[4] = distUltra[4] / 58; //13.3511 instead of 58 because the speed of a soundwave in water is far bigger than in air
 
   //-------------------------------------------------------------------------------
+  */
   //-------------------------------------------------------------------------------
   PORTG &= ~(1 << TRIG6LATDER);
   //digitalWrite(TRIG, LOW); // Set the trigger pin to low for 2uS
