@@ -51,7 +51,7 @@ Physical Pin      Arduino Pin    Port Pin     Function
 //#include <HX711.h>
 #include "SingleEMAFilterLib.h"
 
-SingleEMAFilter<int> singleEMAFilter1(0.3); // 0.2
+SingleEMAFilter<int> singleEMAFilter1(0.4); // 0.2
 SingleEMAFilter<int> singleEMAFilter2(0.3); // 0.2
 
 // ------------- HX711
@@ -142,16 +142,16 @@ volatile int disIrSenValue[2];
 long loadcellvalue;
 
 // -------------------------------------- PID
-float KP = 0.95;  //constante proporcional 0.25     .83 con menos de 190      ||||||||||||||||.95 para 190
-float KD = 8.5;   //constante derivativa
+float KP = 0.99;  //constante proporcional 0.25     .83 con menos de 190      ||||||||||||||||.93 para 190
+float KD = 8.2;   //constante derivativa // 8.5 con 195
 float KI = 0.001; //constante integral
 
-int vel = 190; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
+int vel = 200; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255 // 0.95  se sale mucho
 //int velrecta = 255; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
 //int velcurva = 150; //VELOCIDAD MÁXIMA DEL ROBOT MÁXIMA 255
 
-int veladelante = 232; //VELOCIDAD DEL FRENO DIRECCIÓN ADELANTE
-int velatras = 225;    //VELOCIDAD DEL FRENO DIRECCIÓN ATRÁS
+int veladelante = 235; //VELOCIDAD DEL FRENO DIRECCIÓN ADELANTE
+int velatras = 230;    //VELOCIDAD DEL FRENO DIRECCIÓN ATRÁS
 // --------------------------------------
 
 // -------------------------------------- SENSORES
@@ -456,22 +456,20 @@ void loop()
 
     //readLoadCell();
 
-    detectarObstaculo(); ////////////////////// POR DEPURAR TEMA DE SENORES SIRENA SE ACTIVA
+    //detectarObstaculo(); ////////////////////// POR DEPURAR TEMA DE SENORES SIRENA SE ACTIVA
 
-    Serial.println(disIrSenValue[0]); // ATRASSSS
+    //Serial.println(disIrSenValue[0]); // ATRASSSS
     //Serial.print("   ");
     //Serial.println(disIrSenValue[1]); // ADELANTE
-    //Serial.print(flagObstaculoIR);
-
     /*
     Serial.println(distUltra[0]);
     Serial.println(distUltra[2]);
     Serial.println(distUltra[5]);
+    */
 
-    
+    Serial.print(flagObstaculoIR);
     Serial.print("--------");
     Serial.println(flagObstaculo);
-*/
 
     readVoltEmergency();
 
@@ -479,7 +477,7 @@ void loop()
   }
 
   static unsigned long previousMillis3 = 0;
-  if ((millis() - previousMillis3) > 100)
+  if ((millis() - previousMillis3) > 80)
   {
     //-------------------------------------------------------DEBUG
 
@@ -494,7 +492,7 @@ void loop()
       }
     }
 
-    previousMillis3 += 100;
+    previousMillis3 += 80;
   }
 
   switch (state)
@@ -1190,7 +1188,7 @@ void compensacionVelocidad()
     if (pesoCelda > 50 and pesoCelda < 100)
     {
       KP = 0.95;
-      vel = 193;
+      vel = 195;
       veladelante = 235;
       velatras = 230;
     }
@@ -1205,10 +1203,10 @@ void compensacionVelocidad()
 
     if (pesoCelda > 150 and pesoCelda < 250)
     {
-      KP = 1.25;
-      vel = 230;
-      veladelante = 250;
-      velatras = 245;
+      KP = 1.10;
+      vel = 235;
+      veladelante = 252;
+      velatras = 250;
     }
   }
   ////////// -------------------------------------------------------------------- VALIDACION DEL PESO
@@ -1278,7 +1276,7 @@ void detectarObstaculo()
 
   //--------------------------------------------------------------------------- Detectar ir sensor
 
-  if (((disIrSenValue[0] > 20) && (disIrSenValue[0] < 150))) //-------------------------------------------- CALIBRAR SENSORES || ((disIrSenValue[1] > 125) && (disIrSenValue[1] < 220))
+  if (((disIrSenValue[0] > 120) && (disIrSenValue[0] < 170))) //-------------------------------------------- CALIBRAR SENSORES || ((disIrSenValue[1] > 125) && (disIrSenValue[1] < 220))
   {
     flagObstaculoIR = true;
   }
@@ -1298,9 +1296,8 @@ void detectarObstaculo()
   }
   */
 
-  /*
   //--------------------------------------------------------------------------- Detectar ultrasonic sensor
-  if (((distUltra[0] > 30) && (distUltra[0] < 140)) || ((distUltra[2] > 30) && (distUltra[2] < 50))) //|| ((distUltra[5] > 30) && (distUltra[5] < 45))
+  if (((distUltra[0] > 30) && (distUltra[0] < 140)) || ((distUltra[2] > 30) && (distUltra[2] < 50)) || ((distUltra[5] > 20) && (distUltra[5] < 25))) //
   {
     flagObstaculo = true;
   }
@@ -1308,7 +1305,6 @@ void detectarObstaculo()
   {
     flagObstaculo = false;
   }
-*/
 }
 
 /*
@@ -1320,7 +1316,7 @@ void readDisIrSen()
   //disIrSenValue[1] = analogRead(IRDISB); // leer dis back
 
   // Calcular distancia y filtro
-  singleEMAFilter1.AddValue((6787 / (analogRead(IRDISF) - 3)) - 4); //analogRead(IRDISF)
+  singleEMAFilter1.AddValue(((6787 / (analogRead(IRDISF) - 3)) - 4)); //analogRead(IRDISF)
 
   disIrSenValue[0] = singleEMAFilter1.GetLowPass();
 
