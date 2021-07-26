@@ -115,7 +115,7 @@ LiquidCrystal_I2C lcd(0x27, 20, 4); // set the LCD address to 0x27 for a 16 char
 #define FINISH 3
 #define CHARGE 4
 
-uint8_t state = 0;
+uint8_t state = STOP;
 
 boolean linestatus = true; // true->negra | false->blanca
 
@@ -177,6 +177,8 @@ boolean flagFuncArranque = true; // TRUE  cuando no corre el arranque  FALSE cua
 boolean flagArrStopAuto = true;  // TRUE  cuando arranque stop es auto FALSE Cuando se para por btn
 boolean flagObstaculo = false;   // FALSE cuando no hay obstaculo      TRUE cuando hay obstaculo
 boolean flagObstaculoIR = false;
+
+boolean flagArranqueconCarga = false; // TRUE cuando se necesita arrancar con más carga FALSE cuando no necesita espera de arranque
 // --------------------------------------
 
 //--------------------------------------- FLAG PESO
@@ -456,44 +458,44 @@ void loop()
 
     //readLoadCell();
 
-    //detectarObstaculo(); ////////////////////// POR DEPURAR TEMA DE SENORES SIRENA SE ACTIVA
+    detectarObstaculo(); //////////////////////////////////////////// POR DEPURAR TEMA DE SENORES
 
     //Serial.println(disIrSenValue[0]); // ATRASSSS
     //Serial.print("   ");
     //Serial.println(disIrSenValue[1]); // ADELANTE
-    /*
     Serial.println(distUltra[0]);
+
+    /*
+    
     Serial.println(distUltra[2]);
     Serial.println(distUltra[5]);
     */
 
+    /*
     Serial.print(flagObstaculoIR);
     Serial.print("--------");
     Serial.println(flagObstaculo);
+    */
 
     readVoltEmergency();
 
     previousMillis1 += 300;
   }
 
+  /*
   static unsigned long previousMillis3 = 0;
   if ((millis() - previousMillis3) > 80)
   {
     //-------------------------------------------------------DEBUG
 
-    if (!flagArrStopAuto) // Si es false
-    {
-      // ------------------------------- FUNCTION STOP
-      if (lineSenFront[0] == 1 and lineSenFront[1] == 1 and lineSenFront[2] == 1 and lineSenFront[3] == 1 and lineSenFront[4] == 1 and lineSenFront[5] == 1)
-      {
-        state = STOP;
-        Serial.println("STOP AUTOMATICO");
-        flagArrStopAuto = true;
-      }
-    }
+    //if (!flagArrStopAuto) // Si es false                //-------------------------- SE MODIFICA LA CONDICIONAL PORQUE NO NECESITAMOS RETORNO
+    //{
+
+    //}
 
     previousMillis3 += 80;
   }
+  */
 
   switch (state)
   {
@@ -517,31 +519,34 @@ void loop()
     {
       //Serial.println("::::::::::::::::::::::::::: FUERA DE WHILE");
 
-      if (flagObstaculo or flagObstaculoIR)
+      if (flagObstaculo == true or flagObstaculoIR == true)
       {
         //state = STOP;
         //motores(-180, -180);
         Serial.println("DETECCION DE OBSTACULO");
-        motor_stop();
-        motores(0, 0);
+        motores(-250, -250);
         PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
         PORTL |= (1 << PORTL7);  // ENCENDIDO PITO // Activado
-        _delay_ms(200);
+        _delay_ms(1000);
         PORTL &= ~(1 << PORTL7);
         PORTL |= (1 << PORTL6);
 
-        _delay_ms(4000); //--------------------------------------------Espera para ver si se retiro el obstaculo
+        motor_stop();
+        motores(0, 0);
 
+        _delay_ms(4000); //--------------------------------------------Espera para ver si se retiro el obstaculo
+        flagObstaculo = false;
+        flagObstaculoIR = false;
         lcd.clear();
       }
       else
       {
 
         static unsigned long previousMillis4 = 0;
-        if ((millis() - previousMillis4) > 1000)
+        if ((millis() - previousMillis4) > 5000) //SE MODIFICA TIEMPO DE IMPRESION BATERIA
         {
           printLcdRecorrido();
-          previousMillis4 += 1000;
+          previousMillis4 += 5000;
         }
 
         PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
@@ -567,6 +572,23 @@ void loop()
           PID();
         }
       }
+    }
+
+    // ------------------------------- FUNCTION STOP AUTOMATICO
+    if (lineSenFront[0] == 1 and lineSenFront[1] == 1 and lineSenFront[2] == 1 and lineSenFront[3] == 1 and lineSenFront[4] == 1 and lineSenFront[5] == 1) //
+    {
+      state = STOP;
+
+      for (size_t i = 0; i < 6; i++) // Limpiar valores de sensores
+      {
+        lineSenFront[i] = 0;
+      }
+
+      motores(-240, -240);
+      _delay_ms(1000);
+      //break;
+      //Serial.println("STOP AUTOMATICO");
+      //flagArrStopAuto = true;
     }
 
     break;
@@ -604,18 +626,18 @@ void loop()
       }
 
       readSensLinea();
-      posicion = calcPosicion();
+      //posicion = calcPosicion();
 
-      Serial.print("       | POS: ");
-      Serial.print(posicion);
-      Serial.println("");
+      //Serial.print("       | POS: ");
+      //Serial.print(posicion);
+      //Serial.println("");
 
-      if (lineSenFront[4] == 1 && lineSenFront[5] == 1) // Detecta linea
+      if (lineSenFront[4] == 1 && lineSenFront[5] == 1) // Detecta linea PRIMEROS DE DERECHA
       {
-        motores(veladelante, -velatras);
+        motores(250, -255);
         PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
         PORTL |= (1 << PORTL7);  // ENCENDIDO PITO // Activado
-        _delay_ms(400);
+        _delay_ms(1400);
         state = STOP;
         lcd.clear();
       }
@@ -623,7 +645,7 @@ void loop()
       {
         PORTL &= ~(1 << PORTL6);
         PORTL &= ~(1 << PORTL7); // PITO OFF // ENCENDID LICUADORA
-        motores(-velatras, veladelante);
+        motores(-200, 200);
       }
     }
 
@@ -764,10 +786,19 @@ void motor_CW()
     flagFuncArranque = false;
     flagArrStopAuto = false;
 
+    // flag espera a maxima potencia arranque
+    if (flagArranqueconCarga)
+    {
+      Serial.println("----------ESPERA PARA ARRANQUE----------");
+      _delay_ms(500);
+    }
     // PROBAR BAJANDO VARIABLE A 0 Y MODIFICAR LAS ISR
   }
 
-  Serial.println("CW");
+  //Serial.println("CW");
+  Serial.println("BANDERA DE ESPERA EN ARRANQUE");
+  Serial.println(flagArranqueconCarga);
+
   delay(2);
 }
 
@@ -1191,22 +1222,36 @@ void compensacionVelocidad()
       vel = 195;
       veladelante = 235;
       velatras = 230;
+      flagArranqueconCarga = false;
+      lcd.setCursor(2, 2);
+      lcd.print("                ");
     }
-
-    if (pesoCelda > 100 and pesoCelda < 150)
+    else if (pesoCelda > 100 and pesoCelda < 150)
     {
-      KP = 1.0;
-      vel = 198;
-      veladelante = 242;
-      velatras = 235;
+      KP = 1.1;
+      KD = 8.9;
+      vel = 205;
+      veladelante = 247;
+      velatras = 240;
+
+      lcd.setCursor(2, 2);
+      lcd.print("                ");
+
+      flagArranqueconCarga = false;
     }
-
-    if (pesoCelda > 150 and pesoCelda < 250)
+    else if (pesoCelda > 150 and pesoCelda < 250)
     {
-      KP = 1.10;
+      KP = 1.1;
+      KD = 8.9;
       vel = 235;
-      veladelante = 252;
+      veladelante = 254;
       velatras = 250;
+
+      lcd.setCursor(2, 2);
+      lcd.print("                ");
+
+      //Bandera para que arranque dure más
+      flagArranqueconCarga = true;
     }
   }
   ////////// -------------------------------------------------------------------- VALIDACION DEL PESO
@@ -1275,8 +1320,8 @@ void detectarObstaculo()
   readUltrasonicSen();
 
   //--------------------------------------------------------------------------- Detectar ir sensor
-
-  if (((disIrSenValue[0] > 120) && (disIrSenValue[0] < 170))) //-------------------------------------------- CALIBRAR SENSORES || ((disIrSenValue[1] > 125) && (disIrSenValue[1] < 220))
+  /*
+  if (((disIrSenValue[0] > 110) && (disIrSenValue[0] < 130))) //-------------------------------------------- CALIBRAR SENSORES || ((disIrSenValue[1] > 125) && (disIrSenValue[1] < 220))
   {
     flagObstaculoIR = true;
   }
@@ -1284,6 +1329,7 @@ void detectarObstaculo()
   {
     flagObstaculoIR = false;
   }
+  */
 
   /*
   if (((disIrSenValue[1] > 125) && (disIrSenValue[1] < 220))) //-------------------------------------------- CALIBRAR SENSORES
@@ -1297,7 +1343,7 @@ void detectarObstaculo()
   */
 
   //--------------------------------------------------------------------------- Detectar ultrasonic sensor
-  if (((distUltra[0] > 30) && (distUltra[0] < 140)) || ((distUltra[2] > 30) && (distUltra[2] < 50)) || ((distUltra[5] > 20) && (distUltra[5] < 25))) //
+  if (((distUltra[0] > 25) && (distUltra[0] < 100)) || ((distUltra[2] > 25) && (distUltra[2] < 50)) || ((distUltra[5] > 25) && (distUltra[5] < 50))) //
   {
     flagObstaculo = true;
   }
