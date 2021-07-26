@@ -463,13 +463,12 @@ void loop()
     //Serial.println(disIrSenValue[0]); // ATRASSSS
     //Serial.print("   ");
     //Serial.println(disIrSenValue[1]); // ADELANTE
-    Serial.println(distUltra[0]);
 
-    /*
-    
-    Serial.println(distUltra[2]);
+    Serial.print(distUltra[0]);
+    Serial.print(" ------- ");
+    Serial.print(distUltra[2]);
+    Serial.print(" ------- ");
     Serial.println(distUltra[5]);
-    */
 
     /*
     Serial.print(flagObstaculoIR);
@@ -519,73 +518,77 @@ void loop()
     {
       //Serial.println("::::::::::::::::::::::::::: FUERA DE WHILE");
 
-      if (flagObstaculo == true or flagObstaculoIR == true)
+      static unsigned long previousMillis4 = 0;
+      if ((millis() - previousMillis4) > 5000) //SE MODIFICA TIEMPO DE IMPRESION BATERIA
       {
-        //state = STOP;
-        //motores(-180, -180);
-        Serial.println("DETECCION DE OBSTACULO");
-        motores(-250, -250);
-        PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
-        PORTL |= (1 << PORTL7);  // ENCENDIDO PITO // Activado
-        _delay_ms(1000);
-        PORTL &= ~(1 << PORTL7);
-        PORTL |= (1 << PORTL6);
+        printLcdRecorrido();
+        previousMillis4 += 5000;
+      }
 
-        motor_stop();
-        motores(0, 0);
+      PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
+      PORTL &= ~(1 << PORTL7); // ENCENDIDO PITO // off
 
-        _delay_ms(4000); //--------------------------------------------Espera para ver si se retiro el obstaculo
-        flagObstaculo = false;
-        flagObstaculoIR = false;
-        lcd.clear();
+      readSensLinea();
+      posicion = calcPosicion();
+
+      Serial.print("       | POS: ");
+      Serial.println(posicion);
+      Serial.println("");
+
+      if (posicion <= 150)
+      {
+        motores(-velatras, veladelante);
+      }
+      else if (posicion >= 550)
+      {
+        motores(veladelante, -velatras);
       }
       else
       {
-
-        static unsigned long previousMillis4 = 0;
-        if ((millis() - previousMillis4) > 5000) //SE MODIFICA TIEMPO DE IMPRESION BATERIA
-        {
-          printLcdRecorrido();
-          previousMillis4 += 5000;
-        }
-
-        PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
-        PORTL &= ~(1 << PORTL7); // ENCENDIDO PITO // off
-
-        readSensLinea();
-        posicion = calcPosicion();
-
-        Serial.print("       | POS: ");
-        Serial.println(posicion);
-        Serial.println("");
-
-        if (posicion <= 150)
-        {
-          motores(-velatras, veladelante);
-        }
-        else if (posicion >= 550)
-        {
-          motores(veladelante, -velatras);
-        }
-        else
-        {
-          PID();
-        }
+        PID();
       }
+    }
+
+    if (flagObstaculo == true or flagObstaculoIR == true)
+    {
+      //state = STOP;
+      //motores(-180, -180);
+      Serial.println("DETECCION DE OBSTACULO");
+      motores(-150, -150);
+      PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
+      PORTL |= (1 << PORTL7);  // ENCENDIDO PITO // Activado
+      _delay_ms(1000);
+      PORTL &= ~(1 << PORTL7);
+      PORTL |= (1 << PORTL6);
+
+      motor_stop();
+      motores(0, 0);
+
+      _delay_ms(3500); //--------------------------------------------Espera para ver si se retiro el obstaculo
+
+      distUltra[0] = 0;
+      distUltra[2] = 0;
+      distUltra[5] = 0;
+      flagObstaculo = false;
+      flagObstaculoIR = false;
+      detectarObstaculo();
+      lcd.clear();
+      flagFuncArranque = true;
+      state = BACKF;
     }
 
     // ------------------------------- FUNCTION STOP AUTOMATICO
     if (lineSenFront[0] == 1 and lineSenFront[1] == 1 and lineSenFront[2] == 1 and lineSenFront[3] == 1 and lineSenFront[4] == 1 and lineSenFront[5] == 1) //
     {
-      state = STOP;
-
       for (size_t i = 0; i < 6; i++) // Limpiar valores de sensores
       {
         lineSenFront[i] = 0;
       }
-
-      motores(-240, -240);
-      _delay_ms(1000);
+      posicion = 350;
+      motores(-150, -150);
+      _delay_ms(900);
+      motores(0, 0);
+      state = STOP;
       //break;
       //Serial.println("STOP AUTOMATICO");
       //flagArrStopAuto = true;
@@ -598,10 +601,9 @@ void loop()
 
     //ESTADO CUANDO PRESIONA BOTONERA DELANTERA
 
-    if (flagObstaculo or flagObstaculoIR)
+    if (flagObstaculo == true or flagObstaculoIR == true)
     {
       Serial.println("DETECCION DE OBSTACULO");
-      motor_stop();
       //state = STOP;
       //motores(-180, -180);
       motores(0, 0);
@@ -799,7 +801,7 @@ void motor_CW()
   Serial.println("BANDERA DE ESPERA EN ARRANQUE");
   Serial.println(flagArranqueconCarga);
 
-  delay(2);
+  _delay_ms(2);
 }
 
 /*
@@ -1242,10 +1244,10 @@ void compensacionVelocidad()
     else if (pesoCelda > 150 and pesoCelda < 250)
     {
       KP = 1.1;
-      KD = 8.9;
+      KD = 8.2;
       vel = 235;
-      veladelante = 254;
-      velatras = 250;
+      veladelante = 250;
+      velatras = 245;
 
       lcd.setCursor(2, 2);
       lcd.print("                ");
@@ -1343,7 +1345,7 @@ void detectarObstaculo()
   */
 
   //--------------------------------------------------------------------------- Detectar ultrasonic sensor
-  if (((distUltra[0] > 25) && (distUltra[0] < 100)) || ((distUltra[2] > 25) && (distUltra[2] < 50)) || ((distUltra[5] > 25) && (distUltra[5] < 50))) //
+  if (((distUltra[0] > 25) && (distUltra[0] < 100)) || ((distUltra[2] > 25) && (distUltra[2] < 45)) || ((distUltra[5] > 25) && (distUltra[5] < 45))) //
   {
     flagObstaculo = true;
   }
