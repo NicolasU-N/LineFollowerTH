@@ -178,7 +178,10 @@ boolean flagArrStopAuto = true;  // TRUE  cuando arranque stop es auto FALSE Cua
 boolean flagObstaculo = false;   // FALSE cuando no hay obstaculo      TRUE cuando hay obstaculo
 boolean flagObstaculoIR = false;
 
+boolean flagParadaObstaculo = false; // FALSE cuando no hay parada por obstaculo TRUE cuando hay parada por obstaculo
+
 boolean flagArranqueconCarga = false; // TRUE cuando se necesita arrancar con más carga FALSE cuando no necesita espera de arranque
+
 // --------------------------------------
 
 //--------------------------------------- FLAG PESO
@@ -458,7 +461,7 @@ void loop()
 
     //readLoadCell();
 
-    detectarObstaculo(); //////////////////////////////////////////// POR DEPURAR TEMA DE SENORES
+    //detectarObstaculo(); //////////////////////////////////////////// POR DEPURAR TEMA DE SENORES
 
     //Serial.println(disIrSenValue[0]); // ATRASSSS
     //Serial.print("   ");
@@ -551,30 +554,24 @@ void loop()
 
     if (flagObstaculo == true or flagObstaculoIR == true)
     {
-      //state = STOP;
-      //motores(-180, -180);
       Serial.println("DETECCION DE OBSTACULO");
+      state = STOP;
+      flagParadaObstaculo = true;
       motores(-150, -150);
+
       PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
       PORTL |= (1 << PORTL7);  // ENCENDIDO PITO // Activado
       _delay_ms(1000);
       PORTL &= ~(1 << PORTL7);
       PORTL |= (1 << PORTL6);
 
-      motor_stop();
-      motores(0, 0);
-
-      _delay_ms(3500); //--------------------------------------------Espera para ver si se retiro el obstaculo
-
       distUltra[0] = 0;
       distUltra[2] = 0;
       distUltra[5] = 0;
       flagObstaculo = false;
       flagObstaculoIR = false;
-      detectarObstaculo();
+
       lcd.clear();
-      flagFuncArranque = true;
-      state = BACKF;
     }
 
     // ------------------------------- FUNCTION STOP AUTOMATICO
@@ -613,7 +610,7 @@ void loop()
       PORTL &= ~(1 << PORTL7);
       PORTL |= (1 << PORTL6);
 
-      _delay_ms(4000); //--------------------------------------------Espera para ver si se retiro el obstaculo
+      _delay_ms(3500); //--------------------------------------------Espera para ver si se retiro el obstaculo
 
       lcd.clear();
     }
@@ -654,6 +651,7 @@ void loop()
     break;
 
   case STOP:
+
     static unsigned long previousMillis6 = 0;
     if ((millis() - previousMillis6) > 800)
     {
@@ -682,6 +680,25 @@ void loop()
 
     fadeValue = 0;
     velPwm = 0; // SIN CONTROL
+
+    /*
+    // CONDICION PARA CAMBIAR DE ESTADO CUANDO PARA POR SENSORES
+
+    static unsigned long previousMillis10 = 0;
+    if ((millis() - previousMillis10) > 3500)
+    {
+      Serial.println("COMPROBANDO TEMPORIZADOR");
+      if (flagParadaObstaculo == true)
+      {
+        Serial.println("ARRANQUEEEE");
+        PWM_on();
+        state = BACKF;
+        flagParadaObstaculo = false;
+      }
+      previousMillis10 += 3500;
+    }
+    */
+    //_delay_ms(3500); //--------------------------------------------Espera para ver si se retiro el obstaculo
 
     break;
   }
@@ -774,9 +791,9 @@ void motor_CW()
   velPwm = funcPwm(fadeValue);
   //Serial.println(velPwm);
 
-  setDutyPWMIZQ(velPwm);
-  setDutyPWMDER(velPwm);
-
+  //setDutyPWMIZQ(velPwm);
+  //setDutyPWMDER(velPwm);
+  motores(velPwm, velPwm);
   if (fadeValue < 447)
   {
     fadeValue++; // Valor max para 252 pwm
@@ -792,7 +809,7 @@ void motor_CW()
     if (flagArranqueconCarga)
     {
       Serial.println("----------ESPERA PARA ARRANQUE----------");
-      _delay_ms(500);
+      _delay_ms(800);
     }
     // PROBAR BAJANDO VARIABLE A 0 Y MODIFICAR LAS ISR
   }
@@ -1243,11 +1260,11 @@ void compensacionVelocidad()
     }
     else if (pesoCelda > 150 and pesoCelda < 250)
     {
-      KP = 1.1;
-      KD = 8.2;
+      KP = 1.2;
+      KD = 9.0;
       vel = 235;
-      veladelante = 250;
-      velatras = 245;
+      veladelante = 252;
+      velatras = 250;
 
       lcd.setCursor(2, 2);
       lcd.print("                ");
