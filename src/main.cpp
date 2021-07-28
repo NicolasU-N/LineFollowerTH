@@ -336,9 +336,6 @@ void setup()
 {
   initLCDi();
 
-  //CELDA DE CARGA
-  //hx711.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
-
   cli();
   Serial.begin(115200);
   Serial2.begin(9600);
@@ -467,11 +464,13 @@ void loop()
     //Serial.print("   ");
     //Serial.println(disIrSenValue[1]); // ADELANTE
 
+    /*
     Serial.print(distUltra[0]);
     Serial.print(" ------- ");
     Serial.print(distUltra[2]);
     Serial.print(" ------- ");
     Serial.println(distUltra[5]);
+    */
 
     /*
     Serial.print(flagObstaculoIR);
@@ -502,12 +501,11 @@ void loop()
   switch (state)
   {
   case BACKF:
-    PWM_on();
-    //motor_CW();
     //ESTADO CUANDO PRESIONA BOTONERA TRASERA
 
     if (flagFuncArranque)
     {
+      PWM_on();
       motor_CW();
 
       static unsigned long previousMillis5 = 0;
@@ -782,18 +780,20 @@ void motor_CW()
   PORTL &= ~(1 << PORTL7); // PITO OFF
 
   //PUENTE H
-  PORTH &= ~(1 << PWMIZQ1); // LOW Y OTRO HIGH ES PARA ATRAS
-  PORTH |= (1 << PWMIZQ0);
+  //PORTH &= ~(1 << PWMIZQ1); // LOW Y OTRO HIGH ES PARA ATRAS
+  //PORTH |= (1 << PWMIZQ0);
 
-  PORTE |= (1 << PWMDER1);
-  PORTG &= ~(1 << PWMDER0);
+  //PORTE |= (1 << PWMDER1);
+  //PORTG &= ~(1 << PWMDER0);
 
   velPwm = funcPwm(fadeValue);
   //Serial.println(velPwm);
 
   //setDutyPWMIZQ(velPwm);
   //setDutyPWMDER(velPwm);
+
   motores(velPwm, velPwm);
+
   if (fadeValue < 447)
   {
     fadeValue++; // Valor max para 252 pwm
@@ -808,15 +808,15 @@ void motor_CW()
     // flag espera a maxima potencia arranque
     if (flagArranqueconCarga)
     {
-      Serial.println("----------ESPERA PARA ARRANQUE----------");
+      //Serial.println("----------ESPERA PARA ARRANQUE----------");
       _delay_ms(800);
     }
     // PROBAR BAJANDO VARIABLE A 0 Y MODIFICAR LAS ISR
   }
 
   //Serial.println("CW");
-  Serial.println("BANDERA DE ESPERA EN ARRANQUE");
-  Serial.println(flagArranqueconCarga);
+  //Serial.println("BANDERA DE ESPERA EN ARRANQUE");
+  //Serial.println(flagArranqueconCarga);
 
   _delay_ms(2);
 }
@@ -1260,11 +1260,11 @@ void compensacionVelocidad()
     }
     else if (pesoCelda > 150 and pesoCelda < 250)
     {
-      KP = 1.2;
-      KD = 9.0;
+      KP = 3.0;
+      KD = 9.2;
       vel = 235;
-      veladelante = 252;
-      velatras = 250;
+      veladelante = 254;
+      velatras = 252;
 
       lcd.setCursor(2, 2);
       lcd.print("                ");
