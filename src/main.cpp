@@ -458,7 +458,7 @@ void loop()
 
     //readLoadCell();
 
-    //detectarObstaculo(); //////////////////////////////////////////// POR DEPURAR TEMA DE SENORES
+    //                   detectarObstaculo(); //////////////////////////////////////////// POR DEPURAR TEMA DE SENORES
 
     //Serial.println(disIrSenValue[0]); // ATRASSSS
     //Serial.print("   ");
@@ -509,10 +509,10 @@ void loop()
       motor_CW();
 
       static unsigned long previousMillis5 = 0;
-      if ((millis() - previousMillis5) > 1000)
+      if ((millis() - previousMillis5) > 4000)
       {
         printLcdRecorrido();
-        previousMillis5 += 1000;
+        previousMillis5 += 4000;
       }
     }
     else
@@ -525,9 +525,6 @@ void loop()
         printLcdRecorrido();
         previousMillis4 += 5000;
       }
-
-      PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
-      PORTL &= ~(1 << PORTL7); // ENCENDIDO PITO // off
 
       readSensLinea();
       posicion = calcPosicion();
@@ -591,6 +588,58 @@ void loop()
 
     break;
 
+  case STOP:
+
+    static unsigned long previousMillis6 = 0;
+    if ((millis() - previousMillis6) > 800)
+    {
+      printLcdStop();
+      previousMillis6 += 800;
+    }
+
+    motor_stop();
+    motores(0, 0);
+    PWM_off();
+
+    PORTH &= ~(1 << PWMIZQ0); // LOW Y OTRO HIGH ES PARA ATRAS
+    PORTH &= ~(1 << PWMIZQ1);
+
+    PORTE &= ~(1 << PWMDER1);
+    PORTG &= ~(1 << PWMDER0);
+
+    //APAGAR LUZ SIRENA
+    PORTL |= (1 << PORTL6);
+    PORTL &= ~(1 << PORTL7); // PITO OFF
+
+    // RESETEAR FLAG SECUENCIA DE ARRANQUE
+    flagFuncArranque = true;
+    flagObstaculo = false;
+    flagObstaculoIR = false;
+
+    fadeValue = 0;
+    velPwm = 0; // SIN CONTROL
+
+    /*
+    // CONDICION PARA CAMBIAR DE ESTADO CUANDO PARA POR SENSORES
+
+    static unsigned long previousMillis10 = 0;
+    if ((millis() - previousMillis10) > 3500)
+    {
+      Serial.println("COMPROBANDO TEMPORIZADOR");
+      if (flagParadaObstaculo == true)
+      {
+        Serial.println("ARRANQUEEEE");
+        PWM_on();
+        state = BACKF;
+        flagParadaObstaculo = false;
+      }
+      previousMillis10 += 3500;
+    }
+    */
+    //_delay_ms(3500); //--------------------------------------------Espera para ver si se retiro el obstaculo
+
+    break;
+
   case BACKB:
     //motor_CCW();
 
@@ -645,58 +694,6 @@ void loop()
         motores(-200, 200);
       }
     }
-
-    break;
-
-  case STOP:
-
-    static unsigned long previousMillis6 = 0;
-    if ((millis() - previousMillis6) > 800)
-    {
-      printLcdStop();
-      previousMillis6 += 800;
-    }
-
-    motor_stop();
-    motores(0, 0);
-    PWM_off();
-
-    PORTH &= ~(1 << PWMIZQ0); // LOW Y OTRO HIGH ES PARA ATRAS
-    PORTH &= ~(1 << PWMIZQ1);
-
-    PORTE &= ~(1 << PWMDER1);
-    PORTG &= ~(1 << PWMDER0);
-
-    //APAGAR LUZ SIRENA
-    PORTL |= (1 << PORTL6);
-    PORTL &= ~(1 << PORTL7); // PITO OFF
-
-    // RESETEAR FLAG SECUENCIA DE ARRANQUE
-    flagFuncArranque = true;
-    flagObstaculo = false;
-    flagObstaculoIR = false;
-
-    fadeValue = 0;
-    velPwm = 0; // SIN CONTROL
-
-    /*
-    // CONDICION PARA CAMBIAR DE ESTADO CUANDO PARA POR SENSORES
-
-    static unsigned long previousMillis10 = 0;
-    if ((millis() - previousMillis10) > 3500)
-    {
-      Serial.println("COMPROBANDO TEMPORIZADOR");
-      if (flagParadaObstaculo == true)
-      {
-        Serial.println("ARRANQUEEEE");
-        PWM_on();
-        state = BACKF;
-        flagParadaObstaculo = false;
-      }
-      previousMillis10 += 3500;
-    }
-    */
-    //_delay_ms(3500); //--------------------------------------------Espera para ver si se retiro el obstaculo
 
     break;
   }
@@ -804,6 +801,9 @@ void motor_CW()
     lcd.clear();
     flagFuncArranque = false;
     flagArrStopAuto = false;
+
+    PORTL &= ~(1 << PORTL6); // ENCENDID LICUADORA
+    PORTL &= ~(1 << PORTL7); // ENCENDIDO PITO // off
 
     // flag espera a maxima potencia arranque
     if (flagArranqueconCarga)
@@ -1234,6 +1234,18 @@ void compensacionVelocidad()
   }
   else
   {
+
+    if (pesoCelda > 0 and pesoCelda < 50)
+    {
+      KP = 1.5;
+      KD = 9.5;
+      vel = 200;
+      veladelante = 235;
+      velatras = 230;
+      flagArranqueconCarga = false;
+      lcd.setCursor(2, 2);
+      lcd.print("                ");
+    }
 
     if (pesoCelda > 50 and pesoCelda < 100)
     {
